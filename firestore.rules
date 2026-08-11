@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function role(name) { return signedIn() && request.auth.token.role == name; }
+    function admin() { return role('admin'); }
+
+    match /users/{userId} {
+      allow read, update: if signedIn() && (request.auth.uid == userId || admin());
+      allow create: if signedIn() && request.auth.uid == userId;
+    }
+    match /donorProfiles/{userId} {
+      allow read, write: if signedIn() && (request.auth.uid == userId || admin());
+    }
+    match /socialWorkerProfiles/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || admin());
+      allow write: if admin();
+    }
+    match /furniture/{itemId} {
+      allow read: if signedIn();
+      allow write: if false; // All writes pass through the verified Flask API.
+    }
+    match /cases/{caseId} {
+      allow read, write: if false; // Sensitive workflow data stays server-only.
+    }
+    match /matches/{matchId} {
+      allow read, write: if false;
+    }
+  }
+}

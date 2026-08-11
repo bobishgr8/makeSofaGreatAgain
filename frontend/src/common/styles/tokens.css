@@ -1,0 +1,13 @@
+:root {
+  --forest: #17483a;
+  --leaf: #4f7a66;
+  --orange: #e66a3d;
+  --cream: #f5f1e8;
+  --paper: #fffdf8;
+  --ink: #17352c;
+  --muted: #6d7b73;
+  --line: #dce2dc;
+  --white: #fff;
+  --radius: 10px;
+  --shadow: 0 14px 40px rgba(25, 52, 42, 0.09);
+}
