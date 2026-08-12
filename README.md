@@ -9,7 +9,7 @@ refurbish-platform/
 ├── frontend/src/
 │   ├── app/                  # composition, routes and auth state
 │   ├── common/               # shared UI, API client, Firebase and CSS
-│   └── modules/              # auth, donors, social workers, furniture, matching
+│   └── modules/              # auth, donors, social workers, furniture, matching, admin
 ├── backend/app/              # Flask blueprints and Firebase Admin
 ├── backend/tests/            # matching tests
 ├── firebase.json
@@ -35,6 +35,19 @@ pip install -r requirements.txt
 cp env.example .env
 flask --app run.py run --debug
 ```
+
+### Assigning admin roles (server-side)
+
+A small helper script is included to set Firebase custom claims (role) for a user. Use this from a secure machine with your Firebase service account JSON.
+
+Examples:
+
+```bash
+python backend/scripts/set_role.py --service-account /path/to/serviceAccount.json --email admin@example.org --role admin
+python backend/scripts/set_role.py --service-account /path/to/serviceAccount.json --uid someFirebaseUid --role admin
+```
+
+After updating a user's role, they must refresh their ID token in the client (e.g. call `getIdToken(true)` or sign in again) to pick up the new role claim.
 
 `AUTH_DISABLED=1` is only for local development. Production must verify Firebase ID tokens.
 

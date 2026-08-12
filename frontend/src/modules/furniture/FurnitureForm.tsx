@@ -6,33 +6,9 @@ import Button from "../../common/components/Button";
 import FormField from "../../common/components/FormField";
 import { api } from "../../common/api";
 import { auth, storage } from "../../common/firebase";
+import { useFormConfig } from "../../app/FormConfigContext";
+import type { Draft } from "./types";
 import "./FurnitureForm.css";
-
-type Draft = {
-  title: string;
-  category: string;
-  subcategory: string;
-  condition: string;
-  conditionNotes: string;
-  quantity: number;
-  widthCm: string;
-  depthCm: string;
-  heightCm: string;
-  neighbourhood: string;
-  floor: string;
-  hasLift: string;
-  fitsInLift: string;
-  disassembly: string;
-  delivery: string;
-  deadlineType: "specific" | "flexible";
-  collectionDeadline: string;
-  availability: string[];
-  contactName: string;
-  whatsapp: string;
-  safeToUse: boolean;
-  offeredFree: boolean;
-  contactConsent: boolean;
-};
 
 type SelectedPhoto = { id: string; file: File; preview: string };
 
@@ -109,6 +85,7 @@ export default function FurnitureForm() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { config } = useFormConfig();
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -163,42 +140,83 @@ export default function FurnitureForm() {
   }
 
   function validateStep() {
-    if (
-      step === 1 &&
-      (!draft.title ||
-        !draft.category ||
-        !draft.condition ||
-        !draft.conditionNotes ||
-        !photos.length)
-    )
-      return "Add the item details, an honest condition note and at least one photo.";
-    if (
-      step === 2 &&
-      (!draft.widthCm ||
-        !draft.depthCm ||
-        !draft.heightCm ||
-        !draft.neighbourhood ||
-        !draft.floor ||
-        !draft.hasLift ||
-        !draft.delivery ||
-        !draft.availability.length)
-    )
-      return "Complete the dimensions, location, access and collection details.";
-    if (
-      step === 2 &&
-      draft.deadlineType === "specific" &&
-      !draft.collectionDeadline
-    )
-      return "Choose the collection deadline.";
-    if (
-      step === 3 &&
-      (!draft.contactName ||
-        !draft.whatsapp ||
-        !draft.safeToUse ||
-        !draft.offeredFree ||
-        !draft.contactConsent)
-    )
-      return "Confirm your contact details and all three declarations.";
+    if (step === 1) {
+      const requiredFields: Array<keyof Draft | "photos"> = [
+        "title",
+        "category",
+        "condition",
+        "conditionNotes",
+        "photos",
+      ];
+      const missing = requiredFields.some((field) => {
+        if (!config[field]) return false;
+        if (field === "photos") return photos.length === 0;
+        const value = draft[field];
+        return (
+          value === "" ||
+          value === false ||
+          value === null ||
+          value === undefined
+        );
+      });
+      if (missing)
+        return "Add the item details, an honest condition note and at least one photo.";
+    }
+
+    if (step === 2) {
+      const requiredFields: Array<keyof Draft> = [
+        "widthCm",
+        "depthCm",
+        "heightCm",
+        "neighbourhood",
+        "floor",
+        "hasLift",
+        "delivery",
+        "availability",
+      ];
+      const missing = requiredFields.some((field) => {
+        if (!config[field]) return false;
+        const value = draft[field];
+        return (
+          value === "" ||
+          value === false ||
+          value === null ||
+          value === undefined ||
+          (Array.isArray(value) && value.length === 0)
+        );
+      });
+      if (missing)
+        return "Complete the dimensions, location, access and collection details.";
+      if (
+        config.deadlineType &&
+        draft.deadlineType === "specific" &&
+        !draft.collectionDeadline
+      )
+        return "Choose the collection deadline.";
+    }
+
+    if (step === 3) {
+      const requiredFields: Array<keyof Draft> = [
+        "contactName",
+        "whatsapp",
+        "safeToUse",
+        "offeredFree",
+        "contactConsent",
+      ];
+      const missing = requiredFields.some((field) => {
+        if (!config[field]) return false;
+        const value = draft[field];
+        return (
+          value === "" ||
+          value === false ||
+          value === null ||
+          value === undefined
+        );
+      });
+      if (missing)
+        return "Confirm your contact details and all three declarations.";
+    }
+
     return "";
   }
 
@@ -325,112 +343,128 @@ export default function FurnitureForm() {
             <p className="form-kicker">01 · The item</p>
             <h2>What are you passing on?</h2>
             <div className="form-grid">
-              <FormField label="Category">
-                <select
-                  value={draft.category}
-                  onChange={(event) => chooseCategory(event.target.value)}
-                  required
-                >
-                  <option value="">Choose one</option>
-                  <option value="sofa">Sofa</option>
-                  <option value="table">Table</option>
-                  <option value="chair">Chair</option>
-                  <option value="bed">Bed or mattress</option>
-                  <option value="storage">Storage</option>
-                  <option value="other">Other</option>
-                </select>
-              </FormField>
-              <FormField label="Type or subtype">
-                <input
-                  value={draft.subcategory}
-                  onChange={(event) =>
-                    update("subcategory", event.target.value)
-                  }
-                  placeholder="e.g. three-seater, dining, wardrobe"
-                />
-              </FormField>
-              <div className="wide">
-                <FormField label="Listing title">
+              {config.category && (
+                <FormField label="Category">
+                  <select
+                    value={draft.category}
+                    onChange={(event) => chooseCategory(event.target.value)}
+                    required
+                  >
+                    <option value="">Choose one</option>
+                    <option value="sofa">Sofa</option>
+                    <option value="table">Table</option>
+                    <option value="chair">Chair</option>
+                    <option value="bed">Bed or mattress</option>
+                    <option value="storage">Storage</option>
+                    <option value="other">Other</option>
+                  </select>
+                </FormField>
+              )}
+              {config.subcategory && (
+                <FormField label="Type or subtype">
                   <input
-                    value={draft.title}
-                    onChange={(event) => update("title", event.target.value)}
-                    required
-                  />
-                </FormField>
-              </div>
-              <FormField label="Condition">
-                <select
-                  value={draft.condition}
-                  onChange={(event) => update("condition", event.target.value)}
-                  required
-                >
-                  <option value="">Choose one</option>
-                  <option value="excellent">Excellent</option>
-                  <option value="good">Good</option>
-                  <option value="usable">Usable</option>
-                  <option value="repair_needed">Needs minor repair</option>
-                </select>
-              </FormField>
-              <FormField label="Quantity">
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={draft.quantity}
-                  onChange={(event) =>
-                    update("quantity", Number(event.target.value))
-                  }
-                />
-              </FormField>
-              <div className="wide">
-                <FormField label="Honest condition note">
-                  <textarea
-                    value={draft.conditionNotes}
+                    value={draft.subcategory}
                     onChange={(event) =>
-                      update("conditionNotes", event.target.value)
+                      update("subcategory", event.target.value)
                     }
-                    placeholder="Mention visible wear, stains, repairs or missing pieces."
-                    required
+                    placeholder="e.g. three-seater, dining, wardrobe"
                   />
                 </FormField>
-              </div>
-            </div>
-            <div className="photo-field">
-              <strong>Photos</strong>
-              <p>
-                Add the front, side and any visible wear. Up to five images, 10
-                MB each.
-              </p>
-              <div className="photo-grid">
-                {photos.map((photo, index) => (
-                  <figure key={photo.id}>
-                    <img
-                      src={photo.preview}
-                      alt={`Selected furniture ${index + 1}`}
-                    />
-                    {index === 0 && <figcaption>Primary</figcaption>}
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(photo.id)}
-                      aria-label={`Remove photo ${index + 1}`}
-                    >
-                      ×
-                    </button>
-                  </figure>
-                ))}
-                {photos.length < 5 && (
-                  <label className="photo-add">
-                    ＋<span>Add photos</span>
+              )}
+              {config.title && (
+                <div className="wide">
+                  <FormField label="Listing title">
                     <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={addPhotos}
+                      value={draft.title}
+                      onChange={(event) => update("title", event.target.value)}
+                      required
                     />
-                  </label>
-                )}
-              </div>
+                  </FormField>
+                </div>
+              )}
+              {config.condition && (
+                <FormField label="Condition">
+                  <select
+                    value={draft.condition}
+                    onChange={(event) =>
+                      update("condition", event.target.value)
+                    }
+                    required
+                  >
+                    <option value="">Choose one</option>
+                    <option value="excellent">Excellent</option>
+                    <option value="good">Good</option>
+                    <option value="usable">Usable</option>
+                    <option value="repair_needed">Needs minor repair</option>
+                  </select>
+                </FormField>
+              )}
+              {config.quantity && (
+                <FormField label="Quantity">
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={draft.quantity}
+                    onChange={(event) =>
+                      update("quantity", Number(event.target.value))
+                    }
+                  />
+                </FormField>
+              )}
+              {config.conditionNotes && (
+                <div className="wide">
+                  <FormField label="Honest condition note">
+                    <textarea
+                      value={draft.conditionNotes}
+                      onChange={(event) =>
+                        update("conditionNotes", event.target.value)
+                      }
+                      placeholder="Mention visible wear, stains, repairs or missing pieces."
+                      required
+                    />
+                  </FormField>
+                </div>
+              )}
             </div>
+            {config.photos && (
+              <div className="photo-field">
+                <strong>Photos</strong>
+                <p>
+                  Add the front, side and any visible wear. Up to five images,
+                  10 MB each.
+                </p>
+                <div className="photo-grid">
+                  {photos.map((photo, index) => (
+                    <figure key={photo.id}>
+                      <img
+                        src={photo.preview}
+                        alt={`Selected furniture ${index + 1}`}
+                      />
+                      {index === 0 && <figcaption>Primary</figcaption>}
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(photo.id)}
+                        aria-label={`Remove photo ${index + 1}`}
+                      >
+                        ×
+                      </button>
+                    </figure>
+                  ))}
+                  {photos.length < 5 && (
+                    <label className="photo-add">
+                      ＋<span>Add photos</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={addPhotos}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -439,156 +473,180 @@ export default function FurnitureForm() {
             <p className="form-kicker">02 · The practical bits</p>
             <h2>Will it fit—and can it move?</h2>
             <div className="form-grid three">
-              <FormField label="Width (cm)">
-                <input
-                  type="number"
-                  min="1"
-                  value={draft.widthCm}
-                  onChange={(event) => update("widthCm", event.target.value)}
-                  required
-                />
-              </FormField>
-              <FormField label="Depth (cm)">
-                <input
-                  type="number"
-                  min="1"
-                  value={draft.depthCm}
-                  onChange={(event) => update("depthCm", event.target.value)}
-                  required
-                />
-              </FormField>
-              <FormField label="Height (cm)">
-                <input
-                  type="number"
-                  min="1"
-                  value={draft.heightCm}
-                  onChange={(event) => update("heightCm", event.target.value)}
-                  required
-                />
-              </FormField>
+              {config.widthCm && (
+                <FormField label="Width (cm)">
+                  <input
+                    type="number"
+                    min="1"
+                    value={draft.widthCm}
+                    onChange={(event) => update("widthCm", event.target.value)}
+                    required
+                  />
+                </FormField>
+              )}
+              {config.depthCm && (
+                <FormField label="Depth (cm)">
+                  <input
+                    type="number"
+                    min="1"
+                    value={draft.depthCm}
+                    onChange={(event) => update("depthCm", event.target.value)}
+                    required
+                  />
+                </FormField>
+              )}
+              {config.heightCm && (
+                <FormField label="Height (cm)">
+                  <input
+                    type="number"
+                    min="1"
+                    value={draft.heightCm}
+                    onChange={(event) => update("heightCm", event.target.value)}
+                    required
+                  />
+                </FormField>
+              )}
             </div>
             <div className="form-grid">
-              <FormField label="Neighbourhood">
-                <select
-                  value={draft.neighbourhood}
-                  onChange={(event) =>
-                    update("neighbourhood", event.target.value)
-                  }
-                  required
-                >
-                  <option value="">Choose one</option>
-                  {neighbourhoods.map((area) => (
-                    <option key={area}>{area}</option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Floor">
-                <input
-                  type="number"
-                  min="1"
-                  value={draft.floor}
-                  onChange={(event) => update("floor", event.target.value)}
-                  required
-                />
-              </FormField>
-              <FormField label="Lift available">
-                <select
-                  value={draft.hasLift}
-                  onChange={(event) => update("hasLift", event.target.value)}
-                  required
-                >
-                  <option value="">Choose one</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </FormField>
-              <FormField label="Fits inside lift">
-                <select
-                  value={draft.fitsInLift}
-                  onChange={(event) => update("fitsInLift", event.target.value)}
-                >
-                  <option value="">Not sure</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </FormField>
-              <FormField label="Can it be dismantled?">
-                <select
-                  value={draft.disassembly}
-                  onChange={(event) =>
-                    update("disassembly", event.target.value)
-                  }
-                >
-                  <option value="not_sure">Not sure</option>
-                  <option value="already">Already dismantled</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </FormField>
-              <FormField label="Can you help deliver?">
-                <select
-                  value={draft.delivery}
-                  onChange={(event) => update("delivery", event.target.value)}
-                  required
-                >
-                  <option value="">Choose one</option>
-                  <option value="network">Yes, across our network</option>
-                  <option value="local">Yes, near my area</option>
-                  <option value="maybe">Possibly—contact me</option>
-                  <option value="no">No, collection only</option>
-                </select>
-              </FormField>
-            </div>
-            <fieldset className="choice-field">
-              <legend>Collection deadline</legend>
-              <label>
-                <input
-                  type="radio"
-                  checked={draft.deadlineType === "flexible"}
-                  onChange={() => update("deadlineType", "flexible")}
-                />{" "}
-                Flexible
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  checked={draft.deadlineType === "specific"}
-                  onChange={() => update("deadlineType", "specific")}
-                />{" "}
-                Specific date
-              </label>
-              {draft.deadlineType === "specific" && (
-                <input
-                  type="date"
-                  value={draft.collectionDeadline}
-                  onChange={(event) =>
-                    update("collectionDeadline", event.target.value)
-                  }
-                />
+              {config.neighbourhood && (
+                <FormField label="Neighbourhood">
+                  <select
+                    value={draft.neighbourhood}
+                    onChange={(event) =>
+                      update("neighbourhood", event.target.value)
+                    }
+                    required
+                  >
+                    <option value="">Choose one</option>
+                    {neighbourhoods.map((area) => (
+                      <option key={area}>{area}</option>
+                    ))}
+                  </select>
+                </FormField>
               )}
-            </fieldset>
-            <fieldset className="choice-field">
-              <legend>Preferred collection times</legend>
-              {[
-                "Weekday daytime",
-                "Weekday evening",
-                "Saturday",
-                "Sunday",
-                "Flexible",
-              ].map((value) => (
-                <label key={value}>
+              {config.floor && (
+                <FormField label="Floor">
                   <input
-                    type="checkbox"
-                    checked={draft.availability.includes(value)}
-                    onChange={() => toggleAvailability(value)}
+                    type="number"
+                    min="1"
+                    value={draft.floor}
+                    onChange={(event) => update("floor", event.target.value)}
+                    required
+                  />
+                </FormField>
+              )}
+              {config.hasLift && (
+                <FormField label="Lift available">
+                  <select
+                    value={draft.hasLift}
+                    onChange={(event) => update("hasLift", event.target.value)}
+                    required
+                  >
+                    <option value="">Choose one</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </FormField>
+              )}
+              {config.fitsInLift && (
+                <FormField label="Fits inside lift">
+                  <select
+                    value={draft.fitsInLift}
+                    onChange={(event) =>
+                      update("fitsInLift", event.target.value)
+                    }
+                  >
+                    <option value="">Not sure</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </FormField>
+              )}
+              {config.disassembly && (
+                <FormField label="Can it be dismantled?">
+                  <select
+                    value={draft.disassembly}
+                    onChange={(event) =>
+                      update("disassembly", event.target.value)
+                    }
+                  >
+                    <option value="not_sure">Not sure</option>
+                    <option value="already">Already dismantled</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </FormField>
+              )}
+              {config.delivery && (
+                <FormField label="Can you help deliver?">
+                  <select
+                    value={draft.delivery}
+                    onChange={(event) => update("delivery", event.target.value)}
+                    required
+                  >
+                    <option value="">Choose one</option>
+                    <option value="network">Yes, across our network</option>
+                    <option value="local">Yes, near my area</option>
+                    <option value="maybe">Possibly—contact me</option>
+                    <option value="no">No, collection only</option>
+                  </select>
+                </FormField>
+              )}
+            </div>
+            {config.deadlineType && (
+              <fieldset className="choice-field">
+                <legend>Collection deadline</legend>
+                <label>
+                  <input
+                    type="radio"
+                    checked={draft.deadlineType === "flexible"}
+                    onChange={() => update("deadlineType", "flexible")}
                   />{" "}
-                  {value}
+                  Flexible
                 </label>
-              ))}
-            </fieldset>
+                <label>
+                  <input
+                    type="radio"
+                    checked={draft.deadlineType === "specific"}
+                    onChange={() => update("deadlineType", "specific")}
+                  />{" "}
+                  Specific date
+                </label>
+                {draft.deadlineType === "specific" &&
+                  config.collectionDeadline && (
+                    <input
+                      type="date"
+                      value={draft.collectionDeadline}
+                      onChange={(event) =>
+                        update("collectionDeadline", event.target.value)
+                      }
+                    />
+                  )}
+              </fieldset>
+            )}
+            {config.availability && (
+              <fieldset className="choice-field">
+                <legend>Preferred collection times</legend>
+                {[
+                  "Weekday daytime",
+                  "Weekday evening",
+                  "Saturday",
+                  "Sunday",
+                  "Flexible",
+                ].map((value) => (
+                  <label key={value}>
+                    <input
+                      type="checkbox"
+                      checked={draft.availability.includes(value)}
+                      onChange={() => toggleAvailability(value)}
+                    />{" "}
+                    {value}
+                  </label>
+                ))}
+              </fieldset>
+            )}
           </section>
         )}
-
         {step === 3 && (
           <section>
             <p className="form-kicker">03 · Confirm</p>
@@ -601,56 +659,66 @@ export default function FurnitureForm() {
               </p>
             </div>
             <div className="form-grid">
-              <FormField label="Contact name">
-                <input
-                  value={draft.contactName}
-                  onChange={(event) =>
-                    update("contactName", event.target.value)
-                  }
-                  required
-                />
-              </FormField>
-              <FormField label="WhatsApp number">
-                <input
-                  type="tel"
-                  value={draft.whatsapp}
-                  onChange={(event) => update("whatsapp", event.target.value)}
-                  placeholder="+65 9123 4567"
-                  required
-                />
-              </FormField>
+              {config.contactName && (
+                <FormField label="Contact name">
+                  <input
+                    value={draft.contactName}
+                    onChange={(event) =>
+                      update("contactName", event.target.value)
+                    }
+                    required
+                  />
+                </FormField>
+              )}
+              {config.whatsapp && (
+                <FormField label="WhatsApp number">
+                  <input
+                    type="tel"
+                    value={draft.whatsapp}
+                    onChange={(event) => update("whatsapp", event.target.value)}
+                    placeholder="+65 9123 4567"
+                    required
+                  />
+                </FormField>
+              )}
             </div>
             <div className="declarations">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={draft.safeToUse}
-                  onChange={(event) =>
-                    update("safeToUse", event.target.checked)
-                  }
-                />{" "}
-                The item is safe and usable as described.
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={draft.offeredFree}
-                  onChange={(event) =>
-                    update("offeredFree", event.target.checked)
-                  }
-                />{" "}
-                The item is offered without charge.
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={draft.contactConsent}
-                  onChange={(event) =>
-                    update("contactConsent", event.target.checked)
-                  }
-                />{" "}
-                I agree to be contacted about collection and handover.
-              </label>
+              {config.safeToUse && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={draft.safeToUse}
+                    onChange={(event) =>
+                      update("safeToUse", event.target.checked)
+                    }
+                  />{" "}
+                  The item is safe and usable as described.
+                </label>
+              )}
+              {config.offeredFree && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={draft.offeredFree}
+                    onChange={(event) =>
+                      update("offeredFree", event.target.checked)
+                    }
+                  />{" "}
+                  The item is offered without charge.
+                </label>
+              )}
+              {config.contactConsent && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={draft.contactConsent}
+                    onChange={(event) =>
+                      update("contactConsent", event.target.checked)
+                    }
+                  />{" "}
+                  I agree to be contacted about collection and handover.
+                </label>
+              )}
             </div>
             <div className="review-card">
               <span>

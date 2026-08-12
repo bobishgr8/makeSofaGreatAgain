@@ -30,6 +30,9 @@ def create_app(test_config=None):
     app.register_blueprint(furniture_bp)
     app.register_blueprint(cases_bp)
     app.register_blueprint(matching_bp)
+    # Server-side configuration endpoint for UI defaults and authoritative lists
+    from .config import config_bp
+    app.register_blueprint(config_bp)
 
     @app.get("/api/health")
     def health():

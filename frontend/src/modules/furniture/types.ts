@@ -1,0 +1,25 @@
+export type Draft = {
+  title: string;
+  category: string;
+  subcategory: string;
+  condition: string;
+  conditionNotes: string;
+  quantity: number;
+  widthCm: string;
+  depthCm: string;
+  heightCm: string;
+  neighbourhood: string;
+  floor: string;
+  hasLift: string;
+  fitsInLift: string;
+  disassembly: string;
+  delivery: string;
+  deadlineType: "specific" | "flexible";
+  collectionDeadline: string;
+  availability: string[];
+  contactName: string;
+  whatsapp: string;
+  safeToUse: boolean;
+  offeredFree: boolean;
+  contactConsent: boolean;
+};
