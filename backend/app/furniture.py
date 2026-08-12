@@ -16,8 +16,11 @@ EDITABLE = {
 
 
 @furniture_bp.get("")
-@require_auth({"donor", "social_worker", "admin"})
 def list_furniture():
+    """Public listing of furniture. Authentication is required for create/update/delete
+    operations, but the list view is intentionally public so donors and recipients can
+    browse available items without signing in.
+    """
     query = get_db().collection(COLLECTION)
     status = request.args.get("status")
     if status:
