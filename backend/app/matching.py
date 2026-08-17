@@ -27,11 +27,12 @@ def generate_matches():
     if not case_document.exists:
         return jsonify({"error": "Case not found"}), 404
     case = case_document.to_dict()
-
+    print(case)
     suggestions = []
     for item_document in db.collection("furniture").where("status", "==", "available").stream():
         item = item_document.to_dict()
         result = score_match(item, case)
+        print(result)
         if result is None:
             continue
         suggestion = {

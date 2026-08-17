@@ -7,6 +7,7 @@ import FormField from "../../common/components/FormField";
 import { api } from "../../common/api";
 import { auth, storage } from "../../common/firebase";
 import { useFormConfig } from "../../app/FormConfigContext";
+import { defaultCategoryLabels } from "../../common/config";
 import type { Draft } from "./types";
 import "./FurnitureForm.css";
 
@@ -66,14 +67,6 @@ const neighbourhoods = [
   "Yishun",
 ];
 
-const categoryLabels: Record<string, string> = {
-  sofa: "sofa",
-  table: "table",
-  chair: "chair",
-  bed: "bed",
-  storage: "storage unit",
-  other: "furniture item",
-};
 
 export default function FurnitureForm() {
   const [step, setStep] = useState(1);
@@ -97,7 +90,7 @@ export default function FurnitureForm() {
       category,
       title:
         current.title ||
-        `Pre-loved ${categoryLabels[category] ?? "furniture item"}`,
+        `Pre-loved ${defaultCategoryLabels[category] ?? "furniture item"}`,
     }));
   }
 
@@ -348,15 +341,13 @@ export default function FurnitureForm() {
                   <select
                     value={draft.category}
                     onChange={(event) => chooseCategory(event.target.value)}
-                    required
-                  >
+                    required>
                     <option value="">Choose one</option>
-                    <option value="sofa">Sofa</option>
-                    <option value="table">Table</option>
-                    <option value="chair">Chair</option>
-                    <option value="bed">Bed or mattress</option>
-                    <option value="storage">Storage</option>
-                    <option value="other">Other</option>
+                    {Object.entries(defaultCategoryLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </FormField>
               )}

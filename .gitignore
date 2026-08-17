@@ -10,3 +10,4 @@ frontend/vite.config.d.ts
 firebase-debug.log
 package-lock.json
 /frontend/package-lock.json
+firebaseServiceAccount.json

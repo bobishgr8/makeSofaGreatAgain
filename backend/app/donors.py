@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from http.client import HTTPException
 
 from flask import Blueprint, g, jsonify, request
 
@@ -29,3 +30,25 @@ def update_profile():
     reference = get_db().collection("donorProfiles").document(g.user["uid"])
     reference.set(data, merge=True)
     return jsonify(serialise(reference.get()))
+
+@donors_bp.get("/me/<donor_id>")
+@require_auth({"donor", "admin", "social_worker"})
+def get_donor_profile(donor_id: str):
+    doc = get_db().collection("donorProfiles").document(donor_id).get()
+
+    if not doc.exists:
+        raise HTTPException(
+            status_code=404,
+            detail="Donor profile not found",
+        )
+
+    data = doc.to_dict()
+
+    return {
+        "id": doc.id,
+        "displayName": data.get("displayName"),
+        "phone": data.get("phone"),
+        "preferredContactMethod": data.get("preferredContactMethod"),
+        "consent": data.get("consent"),
+        "updatedAt": data.get("updatedAt"),
+    }

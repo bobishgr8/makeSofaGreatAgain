@@ -14,7 +14,14 @@ EDITABLE = {
     "collection", "safety", "status",
 }
 
-
+FURNITURE_STATUSES = {
+    "pending_review",
+    "available",
+    "rejected",
+    "matched",
+    "collected",
+    "withdrawn",
+}
 @furniture_bp.get("")
 def list_furniture():
     """Public listing of furniture. Authentication is required for create/update/delete
@@ -83,3 +90,53 @@ def withdraw_furniture(item_id):
         return jsonify({"error": "This donation belongs to another donor"}), 403
     reference.update({"status": "withdrawn", "updatedAt": datetime.now(timezone.utc)})
     return "", 204
+
+@furniture_bp.get("/admin/all")
+@require_auth({"admin"})
+def admin_list_furniture():
+    docs = get_db().collection("furniture").stream()
+
+    items = []
+
+    for doc in docs:
+        item = doc.to_dict()
+        item["id"] = doc.id
+        items.append(item)
+
+    return jsonify(items), 200
+
+@furniture_bp.patch("/admin/<furniture_id>")
+@require_auth({"admin"})
+def admin_update_furniture(furniture_id):
+    data = request.get_json(silent=True) or {}
+
+    status = data.get("status")
+
+    if status not in {
+        "available",
+        "pending_review",
+        "rejected",
+    }:
+        return jsonify({
+            "error": "Invalid furniture status"
+        }), 400
+
+    reference = (
+        get_db()
+        .collection(COLLECTION)
+        .document(furniture_id)
+    )
+
+    document = reference.get()
+
+    if not document.exists:
+        abort(404)
+
+    reference.update({
+        "status": status,
+        "updatedAt": datetime.now(timezone.utc),
+    })
+
+    return jsonify(
+        serialise(reference.get())
+    ), 200

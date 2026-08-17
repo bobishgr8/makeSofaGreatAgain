@@ -1,48 +1,104 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
-import { auth } from "../common/firebase";
 
 type Props = {
   children: ReactNode;
-  roles?: string[]; // allowed roles
+  roles?: string[];
+  requireApproval?: boolean;
 };
 
-export default function ProtectedRoute({ children, roles }: Props) {
+export default function ProtectedRoute({
+  children,
+  roles,
+  requireApproval = false,
+}: Props) {
   const { user, loading } = useAuth();
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
+
+  const [authorized, setAuthorized] =
+    useState<boolean | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    async function check() {
+
+    async function checkAuthorization() {
       if (!user) {
         if (mounted) setAuthorized(false);
         return;
       }
-      if (!roles || roles.length === 0) {
-        if (mounted) setAuthorized(true);
-        return;
-      }
+
       try {
-        const tokenResult = await auth.currentUser?.getIdTokenResult();
-        const claims = tokenResult?.claims ?? {};
-        const role = claims.role as string | undefined;
-        if (role && roles.includes(role)) {
-          if (mounted) setAuthorized(true);
-        } else {
+        const tokenResult =
+          await user.getIdTokenResult();
+
+        const role =
+          tokenResult.claims.role as string | undefined;
+
+        const approval =
+          tokenResult.claims.approval as string | undefined;
+
+        console.log("===== ROUTE AUTH =====");
+        console.log("UID:", user.uid);
+        console.log("Role:", role);
+        console.log("Approval:", approval);
+        console.log("Allowed roles:", roles);
+        console.log("======================");
+
+        // Check role
+        if (
+          roles &&
+          roles.length > 0 &&
+          (!role || !roles.includes(role))
+        ) {
           if (mounted) setAuthorized(false);
+          return;
+        }
+
+        // Social workers may additionally require admin approval
+        if (
+          requireApproval &&
+          role === "social_worker" &&
+          approval !== "approved"
+        ) {
+          if (mounted) setAuthorized(false);
+          return;
+        }
+
+        if (mounted) {
+          setAuthorized(true);
         }
       } catch (err) {
-        if (mounted) setAuthorized(false);
+        console.error(
+          "Authorization check failed:",
+          err,
+        );
+
+        if (mounted) {
+          setAuthorized(false);
+        }
       }
     }
-    check();
+
+    checkAuthorization();
+
     return () => {
       mounted = false;
     };
-  }, [user, roles]);
+  }, [user, roles, requireApproval]);
 
-  if (loading || authorized === null) return <div>Loading...</div>;
-  if (!user || !authorized) return <Navigate to="/login" replace />;
+  if (loading || authorized === null) {
+    return <div>Loading...</div>;
+  }
+
+  // Not authenticated
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Authenticated but insufficient permissions
+  if (!authorized) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
   return <>{children}</>;
 }
