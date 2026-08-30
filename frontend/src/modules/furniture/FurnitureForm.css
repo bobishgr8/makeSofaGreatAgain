@@ -1,34 +1,34 @@
 .donation-page {
   max-width: 1100px;
   margin: auto;
-  padding: 56px 24px 90px;
+  padding: 76px 24px 90px;
 }
 
 .donation-heading {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 50px;
+  gap: 56px;
   align-items: end;
   margin-bottom: 32px;
 }
 
 .donation-heading h1 {
   font:
-    400 clamp(42px, 6vw, 68px)/1 Georgia,
+    600 clamp(42px, 6vw, 68px)/1 "Petrona",
     serif;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
   margin: 10px 0 18px;
 }
 
 .donation-heading > div > p:last-child {
-  color: var(--muted);
+  color: var(--ink-muted);
   max-width: 610px;
   line-height: 1.65;
 }
 
 .donation-kicker,
 .form-kicker {
-  color: var(--orange);
+  color: var(--ink-muted);
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
@@ -37,7 +37,7 @@
 
 .step-progress {
   min-width: 180px;
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -52,7 +52,7 @@
 .step-progress i {
   width: 52px;
   height: 3px;
-  background: var(--line);
+  background: var(--cream-deep);
 }
 
 .step-progress i.active {
@@ -60,16 +60,15 @@
 }
 
 .donation-form {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: var(--cream-white);
+  border: 1px solid var(--cream-deep);
+  border-radius: var(--radius-card);
   padding: clamp(24px, 5vw, 54px);
-  box-shadow: var(--shadow);
 }
 
 .donation-form section > h2 {
   font:
-    400 35px Georgia,
+    600 35px "Petrona",
     serif;
   margin: 8px 0 34px;
 }
@@ -89,12 +88,12 @@
 
 .photo-field > strong {
   font-size: 12px;
-  color: var(--leaf);
+  color: var(--ink-muted);
 }
 
 .photo-field > p {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ink-muted);
 }
 
 .photo-grid {
@@ -108,10 +107,10 @@
   position: relative;
   aspect-ratio: 1;
   margin: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--cream-deep);
   border-radius: 8px;
   overflow: hidden;
-  background: #eef1ec;
+  background: var(--cream-card);
 }
 
 .photo-grid img {
@@ -124,9 +123,9 @@
   position: absolute;
   left: 7px;
   bottom: 7px;
-  background: var(--forest);
-  color: white;
-  border-radius: 20px;
+  background: var(--orange);
+  color: var(--cream-white);
+  border-radius: var(--radius-pill);
   padding: 4px 7px;
   font-size: 8px;
   text-transform: uppercase;
@@ -148,7 +147,7 @@
   display: grid;
   place-content: center;
   text-align: center;
-  color: var(--leaf);
+  color: var(--ink-muted);
   font-size: 26px;
   cursor: pointer;
 }
@@ -167,7 +166,7 @@
 
 .choice-field {
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--cream-deep);
   padding: 22px 0 4px;
   margin-top: 24px;
   display: flex;
@@ -180,7 +179,7 @@
   padding: 0 12px 0 0;
   font-size: 12px;
   font-weight: 700;
-  color: var(--leaf);
+  color: var(--ink-muted);
 }
 
 .choice-field label {
@@ -188,27 +187,27 @@
 }
 
 .choice-field input[type="date"] {
-  border: 1px solid var(--line);
+  border: 1px solid var(--cream-deep);
   border-radius: 6px;
   padding: 9px;
 }
 
 .privacy-note {
-  background: #edf3ed;
-  border-left: 3px solid var(--forest);
+  background: var(--cream-card);
+  border-left: 3px solid var(--orange);
   padding: 16px 18px;
   margin-bottom: 25px;
 }
 
 .privacy-note strong {
   font:
-    700 15px Georgia,
+    700 15px "Petrona",
     serif;
 }
 
 .privacy-note p {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ink-muted);
   margin: 6px 0 0;
 }
 
@@ -223,8 +222,8 @@
 }
 
 .review-card {
-  background: var(--cream);
-  border: 1px solid var(--line);
+  background: var(--cream-base);
+  border: 1px solid var(--cream-deep);
   padding: 20px;
   border-radius: 8px;
 }
@@ -232,26 +231,27 @@
 .review-card span {
   font-size: 9px;
   text-transform: uppercase;
-  color: var(--leaf);
+  color: var(--ink-muted);
   letter-spacing: 0.12em;
 }
 
 .review-card h3 {
   font:
-    700 20px Georgia,
+    600 20px "Petrona",
     serif;
   margin: 8px 0;
 }
 
 .review-card p {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ink-muted);
   margin: 0;
 }
 
 .form-error {
-  background: #fee9df;
-  color: #9d3d20;
+  background: var(--cream-card);
+  color: var(--orange-shade-deep);
+  border: 1px solid var(--orange);
   border-radius: 6px;
   padding: 12px 14px;
   font-size: 12px;
@@ -261,7 +261,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--cream-deep);
   padding-top: 24px;
   margin-top: 30px;
 }
@@ -269,14 +269,9 @@
 .back-button {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--ink-muted);
   cursor: pointer;
   padding: 12px;
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: wait;
 }
 
 @media (max-width: 720px) {

@@ -4,28 +4,10 @@ import { Link } from "react-router-dom";
 import { api } from "../../common/api";
 import Card from "../../common/components/Card";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
-
-type CaseNeed = {
-  category?: string;
-};
-
-type CaseRow = {
-  id: string;
-  reference?: string;
-  household?: {
-    summary?: string;
-  };
-  location?: {
-    city?: string;
-    district?: string;
-  };
-  priority?: "standard" | "high" | "urgent";
-  status?: string;
-  needs?: CaseNeed[];
-};
+import type { Case } from "../../common/dto/CaseDTO";
 
 export default function SocialWorkerDashboard() {
-  const [cases, setCases] = useState<CaseRow[]>([]);
+  const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -35,7 +17,7 @@ export default function SocialWorkerDashboard() {
         setLoading(true);
         setError("");
 
-        const data = await api<CaseRow[]>("/api/cases");
+        const data = await api<Case[]>("/api/cases");
 
         setCases(data);
       } catch (err) {

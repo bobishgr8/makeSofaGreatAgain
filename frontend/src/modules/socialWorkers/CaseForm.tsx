@@ -7,14 +7,11 @@ import { useFormConfig } from "../../app/FormConfigContext";
 
 import Button from "../../common/components/Button";
 import FormField from "../../common/components/FormField";
-import { getCategoryLabels, getNeighbourhoods } from "../../common/config";
 
 
 export default function CaseForm() {
   const navigate = useNavigate();
-  const { config } = useFormConfig();
-  const categoryLabels = getCategoryLabels();
-  const neighbourhoods = getNeighbourhoods();
+  const { config, categoryLabels, neighbourhoods } = useFormConfig();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

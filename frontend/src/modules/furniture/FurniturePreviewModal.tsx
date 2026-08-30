@@ -1,4 +1,4 @@
-import type { Furniture } from "./FurnitureDTO";
+import type { Furniture } from "../../common/dto/FurnitureDTO";
 import StatusBadge from "../../common/components/StatusBadge";
 
 type Props = {

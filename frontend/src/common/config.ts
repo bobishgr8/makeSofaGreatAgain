@@ -1,19 +1,20 @@
-import { api } from "./api";
+import type { Draft } from "./dto/DraftDTO";
 
 export type CategoryLabels = Record<string, string>;
 
+// Fallback values used only until GET /api/config resolves (or if it fails).
+// The server (backend/app/config.py) is the source of truth — do not hardcode
+// copies of these lists anywhere else in the app.
 export const defaultCategoryLabels: CategoryLabels = {
   sofa: "sofa",
   table: "table",
   chair: "chair",
   bed: "bed",
-  washing_machine: "washing machine",
-  fridge: "fridge",
   storage: "storage unit",
   other: "furniture item",
 };
 
-export const defaultNeighbourhoods = [
+export const defaultNeighbourhoods: string[] = [
   "Ang Mo Kio",
   "Bedok",
   "Bishan",
@@ -41,7 +42,7 @@ export const defaultNeighbourhoods = [
   "Yishun",
 ];
 
-export const defaultInitialDraft = () => ({
+export const defaultInitialDraft = (): Draft => ({
   title: "",
   category: "",
   subcategory: "",
@@ -59,40 +60,10 @@ export const defaultInitialDraft = () => ({
   delivery: "",
   deadlineType: "flexible",
   collectionDeadline: "",
-  availability: [] as string[],
+  availability: [],
   contactName: "",
   whatsapp: "",
   safeToUse: false,
   offeredFree: false,
   contactConsent: false,
 });
-
-let serverConfig: {
-  categoryLabels?: CategoryLabels;
-  neighbourhoods?: string[];
-  initialDraft?: ReturnType<typeof defaultInitialDraft>;
-} | null = null;
-
-export async function fetchServerConfig() {
-  try {
-    const data = await api<any>("/api/config");
-    serverConfig = data;
-    return serverConfig;
-  } catch (err) {
-    // fallback to defaults on failure
-    serverConfig = null;
-    return null;
-  }
-}
-
-export function getCategoryLabels(): CategoryLabels {
-  return serverConfig?.categoryLabels ?? defaultCategoryLabels;
-}
-
-export function getNeighbourhoods(): string[] {
-  return serverConfig?.neighbourhoods ?? defaultNeighbourhoods;
-}
-
-export function getInitialDraft() {
-  return serverConfig?.initialDraft ?? defaultInitialDraft();
-}

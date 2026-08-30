@@ -3,8 +3,8 @@ import { useParams } from "react-router-dom";
 import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import StatusBadge from "../../common/components/StatusBadge";
-import type { Furniture } from "./FurnitureDTO";
-import type { DonorProfile } from "../donors/DonorProfileDTO";
+import type { Furniture } from "../../common/dto/FurnitureDTO";
+import type { DonorProfile } from "../../common/dto/DonorProfileDTO";
 
 
 export default function FurnitureDetailsPage() {

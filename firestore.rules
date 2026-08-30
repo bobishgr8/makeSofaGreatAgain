@@ -26,5 +26,8 @@ service cloud.firestore {
     match /matches/{matchId} {
       allow read, write: if false;
     }
+    match /platformConfig/{documentId} {
+      allow read, write: if false; // Served via GET/PATCH /api/config, admin-guarded.
+    }
   }
 }

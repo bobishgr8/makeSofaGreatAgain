@@ -1,9 +1,9 @@
 .form {
   max-width: 760px;
-  background: var(--paper);
-  border: 1px solid var(--line);
+  background: var(--cream-white);
+  border: 1px solid var(--cream-deep);
   padding: 30px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
 }
 
 .form-grid {
@@ -15,7 +15,7 @@
 .form-field {
   display: grid;
   gap: 8px;
-  color: var(--leaf);
+  color: var(--ink-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -24,19 +24,15 @@
 .form-field select,
 .form-field textarea {
   width: 100%;
-  border: 1px solid var(--line);
-  background: white;
-  border-radius: 6px;
+  border: 1px solid var(--cream-deep);
+  background: var(--cream-white);
+  border-radius: 8px;
   padding: 12px;
-  color: var(--ink);
+  color: var(--ink-body);
 }
 
 .form-field textarea {
   min-height: 100px;
-}
-
-.form-field.wide {
-  grid-column: 1/-1;
 }
 
 .form .actions {
@@ -44,16 +40,12 @@
 }
 
 .error {
-  color: #a94322;
+  color: var(--orange-shade-deep);
   font-size: 13px;
 }
 
 @media (max-width: 600px) {
   .form-grid {
     grid-template-columns: 1fr;
-  }
-
-  .form-field.wide {
-    grid-column: auto;
   }
 }

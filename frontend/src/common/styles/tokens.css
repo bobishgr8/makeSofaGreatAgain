@@ -1,13 +1,27 @@
 :root {
-  --forest: #17483a;
-  --leaf: #4f7a66;
-  --orange: #e66a3d;
-  --cream: #f5f1e8;
-  --paper: #fffdf8;
-  --ink: #17352c;
-  --muted: #6d7b73;
-  --line: #dce2dc;
-  --white: #fff;
-  --radius: 10px;
-  --shadow: 0 14px 40px rgba(25, 52, 42, 0.09);
+  /* Orange — signature, rationed. See frontend/design/SKILL.md's "orange budget". */
+  --orange: #e35526;
+  --orange-tint-light: #f8dccb; /* in the palette, not currently used as a fill */
+  --orange-tint: #e97751;
+  --orange-hover: #e6663c; /* primary button hover */
+  --orange-shade: #b6441e; /* primary button active/pressed */
+  --orange-shade-deep: #8f3517; /* rare case: orange text directly on cream */
+
+  /* Ink — always charcoal-family. Never introduce a separate grey hue. */
+  --charcoal: #16161d;
+  --ink-heading: #16161d;
+  --ink-body: #3a3a42;
+  --ink-muted: #6e6e76;
+  --ink-faint: #9a9aa1;
+
+  /* Cream — background and surfaces */
+  --cream-base: #fcf7e9;
+  --cream-card: #f5efde;
+  --cream-card-soft: #f9f3e4;
+  --cream-deep: #efe6ce; /* dividers, borders */
+  --cream-white: #fffdf7;
+
+  /* Component radii, reused from the design system's component specs */
+  --radius-pill: 999px;
+  --radius-card: 20px;
 }

@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
-from http.client import HTTPException
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, abort, g, jsonify, request
 
 from .auth import require_auth
 from .firebase import get_db, serialise
@@ -34,21 +33,18 @@ def update_profile():
 @donors_bp.get("/me/<donor_id>")
 @require_auth({"donor", "admin", "social_worker"})
 def get_donor_profile(donor_id: str):
-    doc = get_db().collection("donorProfiles").document(donor_id).get()
+    document = get_db().collection("donorProfiles").document(donor_id).get()
 
-    if not doc.exists:
-        raise HTTPException(
-            status_code=404,
-            detail="Donor profile not found",
-        )
+    if not document.exists:
+        abort(404, description="Donor profile not found")
 
-    data = doc.to_dict()
+    data = serialise(document)
 
-    return {
-        "id": doc.id,
+    return jsonify({
+        "id": data["id"],
         "displayName": data.get("displayName"),
         "phone": data.get("phone"),
         "preferredContactMethod": data.get("preferredContactMethod"),
         "consent": data.get("consent"),
         "updatedAt": data.get("updatedAt"),
-    }
+    })

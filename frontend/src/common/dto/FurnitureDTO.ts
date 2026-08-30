@@ -1,5 +1,26 @@
 import { FurniturePhoto } from "./FurniturePhotoDTO";
 
+// Mirrors backend/app/furniture.py FURNITURE_STATUSES.
+export const FURNITURE_STATUSES = [
+  "pending_review",
+  "available",
+  "rejected",
+  "matched",
+  "collected",
+  "withdrawn",
+] as const;
+
+export type FurnitureStatus = (typeof FURNITURE_STATUSES)[number];
+
+export const FURNITURE_STATUS_LABELS: Record<FurnitureStatus, string> = {
+  pending_review: "Needs review",
+  available: "Approved",
+  rejected: "Rejected",
+  matched: "Matched",
+  collected: "Collected",
+  withdrawn: "Withdrawn",
+};
+
 export type Furniture = {
   id: string;
   schemaVersion?: number;
@@ -12,7 +33,7 @@ export type Furniture = {
   conditionNotes?: string;
 
   quantity: number;
-  status: string;
+  status: FurnitureStatus;
 
   photos?: FurniturePhoto[];
 

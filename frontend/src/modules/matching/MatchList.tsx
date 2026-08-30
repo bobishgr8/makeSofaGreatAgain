@@ -3,9 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
-import MatchCard, { type Match } from "./MatchCard";
+import MatchCard from "./MatchCard";
 import FurnitureCard from "../furniture/FurnitureCard";
-import type { Furniture } from "../furniture/FurnitureDTO";
+import type { Furniture } from "../../common/dto/FurnitureDTO";
+import type { Match } from "../../common/dto/MatchDTO";
 
 type Mode = "matches" | "browse" | "saved";
 

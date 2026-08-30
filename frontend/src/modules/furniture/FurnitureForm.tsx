@@ -7,68 +7,14 @@ import FormField from "../../common/components/FormField";
 import { api } from "../../common/api";
 import { auth, storage } from "../../common/firebase";
 import { useFormConfig } from "../../app/FormConfigContext";
-import { defaultCategoryLabels } from "../../common/config";
-import type { Draft } from "./types";
+import type { Draft } from "../../common/dto/DraftDTO";
 import "./FurnitureForm.css";
 
 type SelectedPhoto = { id: string; file: File; preview: string };
 
-const initialDraft: Draft = {
-  title: "",
-  category: "",
-  subcategory: "",
-  condition: "",
-  conditionNotes: "",
-  quantity: 1,
-  widthCm: "",
-  depthCm: "",
-  heightCm: "",
-  neighbourhood: "",
-  floor: "",
-  hasLift: "",
-  fitsInLift: "",
-  disassembly: "",
-  delivery: "",
-  deadlineType: "flexible",
-  collectionDeadline: "",
-  availability: [],
-  contactName: "",
-  whatsapp: "",
-  safeToUse: false,
-  offeredFree: false,
-  contactConsent: false,
-};
-
-const neighbourhoods = [
-  "Ang Mo Kio",
-  "Bedok",
-  "Bishan",
-  "Bukit Batok",
-  "Bukit Merah",
-  "Bukit Panjang",
-  "Bukit Timah",
-  "Choa Chu Kang",
-  "Clementi",
-  "Geylang",
-  "Hougang",
-  "Jurong East",
-  "Jurong West",
-  "Kallang",
-  "Marine Parade",
-  "Pasir Ris",
-  "Punggol",
-  "Queenstown",
-  "Sembawang",
-  "Sengkang",
-  "Serangoon",
-  "Tampines",
-  "Toa Payoh",
-  "Woodlands",
-  "Yishun",
-];
-
-
 export default function FurnitureForm() {
+  const { config, categoryLabels, neighbourhoods, initialDraft } =
+    useFormConfig();
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState<Draft>(() => ({
     ...initialDraft,
@@ -78,7 +24,6 @@ export default function FurnitureForm() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
-  const { config } = useFormConfig();
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -90,7 +35,7 @@ export default function FurnitureForm() {
       category,
       title:
         current.title ||
-        `Pre-loved ${defaultCategoryLabels[category] ?? "furniture item"}`,
+        `Pre-loved ${categoryLabels[category] ?? "furniture item"}`,
     }));
   }
 
@@ -343,7 +288,7 @@ export default function FurnitureForm() {
                     onChange={(event) => chooseCategory(event.target.value)}
                     required>
                     <option value="">Choose one</option>
-                    {Object.entries(defaultCategoryLabels).map(([value, label]) => (
+                    {Object.entries(categoryLabels).map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
                       </option>

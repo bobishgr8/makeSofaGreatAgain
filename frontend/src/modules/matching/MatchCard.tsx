@@ -1,14 +1,6 @@
 import { Link } from "react-router-dom";
 import Card from "../../common/components/Card";
-
-export type Match = {
-  id: string;
-  score: number;
-  furnitureId: string;
-  caseId: string;
-  status?: string;
-  reasons: string[];
-};
+import type { Match } from "../../common/dto/MatchDTO";
 
 type Props = {
   match: Match;

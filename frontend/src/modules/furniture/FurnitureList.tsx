@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import FurnitureCard from "./FurnitureCard";
-import type { Furniture } from "./FurnitureDTO";
+import type { Furniture } from "../../common/dto/FurnitureDTO";
 export default function FurnitureList() {
   const [items, setItems] = useState<Furniture[]>([]);
   const [loading, setLoading] = useState(true);

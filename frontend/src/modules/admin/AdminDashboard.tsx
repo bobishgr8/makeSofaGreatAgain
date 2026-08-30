@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { auth } from "../../common/firebase";
+import { api } from "../../common/api";
 import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
 import Button from "../../common/components/Button";
 import Card from "../../common/components/Card";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import type { Furniture } from "../../common/dto/FurnitureDTO";
+import { FURNITURE_STATUS_LABELS } from "../../common/dto/FurnitureDTO";
 
 type UserRow = {
   id: string;
@@ -15,15 +15,6 @@ type UserRow = {
   role?: string;
   approval?: string;
   disabled: boolean;
-};
-
-type FurnitureRow = {
-  id: string;
-  title: string;
-  owner?: string;
-  donorId?: string;
-  status: "Approved" | "Needs review";
-  condition?: string;
 };
 
 const formFields: Array<keyof FormConfig> = [
@@ -87,48 +78,16 @@ export default function AdminDashboard() {
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
 
-  const [furniture, setFurniture] = useState<FurnitureRow[]>([]);
+  const [furniture, setFurniture] = useState<Furniture[]>([]);
   const [furnitureLoading, setFurnitureLoading] = useState(true);
   const [furnitureError, setFurnitureError] = useState<string | null>(null);
-
-  async function getAuthHeaders() {
-    const user = auth.currentUser;
-
-    if (!user) {
-      throw new Error("Not authenticated");
-    }
-
-    const token = await user.getIdToken();
-
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    };
-  }
 
   const loadUsers = useCallback(async () => {
     try {
       setUsersLoading(true);
       setUsersError(null);
 
-      const headers = await getAuthHeaders();
-
-      const response = await fetch(
-        `${API_URL}/auth/users`,
-        {
-          headers,
-        },
-      );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-
-        throw new Error(
-          body?.error ?? "Could not load users",
-        );
-      }
-
-      const data: UserRow[] = await response.json();
+      const data = await api<UserRow[]>("/auth/users");
 
       setUsers(data);
     } catch (error) {
@@ -147,24 +106,9 @@ export default function AdminDashboard() {
       setFurnitureLoading(true);
       setFurnitureError(null);
 
-      const headers = await getAuthHeaders();
-
-      const response = await fetch(
-        `${API_URL}/api/furniture/admin/all`,
-        {
-          headers,
-        },
+      const data = await api<Furniture[]>(
+        "/api/furniture/admin/all",
       );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-
-        throw new Error(
-          body?.error ?? "Could not load furniture",
-        );
-      }
-
-      const data: FurnitureRow[] = await response.json();
 
       setFurniture(data);
     } catch (error) {
@@ -190,26 +134,12 @@ export default function AdminDashboard() {
     const nextDisabled = !user.disabled;
 
     try {
-      const headers = await getAuthHeaders();
-
-      const response = await fetch(
-        `${API_URL}/auth/users/${user.id}/status`,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({
-            disabled: nextDisabled,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-
-        throw new Error(
-          body?.error ?? "Could not update user",
-        );
-      }
+      await api(`/auth/users/${user.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          disabled: nextDisabled,
+        }),
+      });
 
       setUsers((current) =>
         current.map((item) =>
@@ -230,34 +160,20 @@ export default function AdminDashboard() {
   }
 
   async function toggleFurnitureStatus(
-    item: FurnitureRow,
+    item: Furniture,
   ) {
     const nextStatus =
-      item.status === "Approved"
-        ? "Needs review"
-        : "Approved";
+      item.status === "available"
+        ? "pending_review"
+        : "available";
 
     try {
-      const headers = await getAuthHeaders();
-
-      const response = await fetch(
-        `${API_URL}/api/furniture/admin/${item.id}`,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({
-            status: nextStatus,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-
-        throw new Error(
-          body?.error ?? "Could not update furniture",
-        );
-      }
+      await api(`/api/furniture/admin/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: nextStatus,
+        }),
+      });
 
       setFurniture((current) =>
         current.map((furnitureItem) =>
@@ -282,27 +198,15 @@ export default function AdminDashboard() {
     approval: "approved" | "rejected",
   ) {
     try {
-      const headers = await getAuthHeaders();
-
-      const response = await fetch(
-        `${API_URL}/auth/social-workers/${user.id}/approval`,
+      await api(
+        `/auth/social-workers/${user.id}/approval`,
         {
           method: "POST",
-          headers,
           body: JSON.stringify({
             approval,
           }),
         },
       );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-
-        throw new Error(
-          body?.error ??
-            "Could not update social worker approval",
-        );
-      }
 
       setUsers((current) =>
         current.map((item) =>
@@ -333,7 +237,7 @@ export default function AdminDashboard() {
   ).length;
 
   const pendingFurniture = furniture.filter(
-    (item) => item.status === "Needs review",
+    (item) => item.status === "pending_review",
   ).length;
 
   return (
@@ -617,12 +521,12 @@ export default function AdminDashboard() {
 
                     <span
                       className={`pill ${
-                        item.status === "Needs review"
-                          ? "pill-danger"
-                          : "pill-success"
+                        item.status === "available"
+                          ? "pill-success"
+                          : "pill-danger"
                       }`}
                     >
-                      {item.status}
+                      {FURNITURE_STATUS_LABELS[item.status]}
                     </span>
                   </div>
 
@@ -633,9 +537,7 @@ export default function AdminDashboard() {
                       </span>
 
                       <strong>
-                        {item.owner ??
-                          item.donorId ??
-                          "Unknown"}
+                        {item.donorId ?? "Unknown"}
                       </strong>
                     </div>
 
@@ -654,7 +556,7 @@ export default function AdminDashboard() {
                     <Button
                       type="button"
                       className={
-                        item.status === "Approved"
+                        item.status === "available"
                           ? "secondary"
                           : ""
                       }
@@ -662,7 +564,7 @@ export default function AdminDashboard() {
                         toggleFurnitureStatus(item)
                       }
                     >
-                      {item.status === "Approved"
+                      {item.status === "available"
                         ? "Flag for review"
                         : "Approve listing"}
                     </Button>

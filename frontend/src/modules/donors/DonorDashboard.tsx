@@ -1,104 +1,61 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  Timestamp,
-  where,
-} from "firebase/firestore";
 
 import Card from "../../common/components/Card";
-import { db } from "../../common/firebase";
+import { api } from "../../common/api";
 import { useAuth } from "../../app/AuthProvider";
-
-type DonationStatus =
-  | "available"
-  | "reserved"
-  | "matched"
-  | "collected"
-  | "donated"
-  | "unavailable";
-
-type Donation = {
-  id: string;
-  title: string;
-  category?: string;
-  status?: DonationStatus;
-  createdAt?: Timestamp;
-  imageUrls?: string[];
-};
+import {
+  FURNITURE_STATUS_LABELS,
+  type Furniture,
+} from "../../common/dto/FurnitureDTO";
 
 export default function DonorDashboard() {
   const { user } = useAuth();
 
-  const [donations, setDonations] = useState<Donation[]>([]);
+  const [donations, setDonations] = useState<Furniture[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-  if (!user) {
-    setLoading(false);
-    return;
-  }
-
-  // Capture after null guard
-  const uid = user.uid;
-
-  async function loadDonations() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const donationsQuery = query(
-        collection(db, "furniture"),
-        where("donorId", "==", uid),
-        orderBy("createdAt", "desc"),
-      );
-
-      const snapshot = await getDocs(donationsQuery);
-
-      const items: Donation[] = snapshot.docs.map((document) => ({
-        id: document.id,
-        ...(document.data() as Omit<Donation, "id">),
-      }));
-
-      setDonations(items);
-    } catch (err) {
-      console.error("Could not load donor donations:", err);
-      setError("We could not load your donations.");
-    } finally {
+    if (!user) {
       setLoading(false);
+      return;
+    }
+
+    async function loadDonations() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const items = await api<Furniture[]>("/api/furniture/mine");
+
+        setDonations(items);
+      } catch (err) {
+        console.error("Could not load donor donations:", err);
+        setError("We could not load your donations.");
+      } finally {
+        setLoading(false);
       }
     }
 
-      loadDonations();
-    }, [user]);
+    loadDonations();
+  }, [user]);
 
   const activeDonations = useMemo(
     () =>
       donations.filter((item) =>
-        ["available", "reserved", "matched"].includes(
-          item.status ?? "available",
-        ),
+        ["pending_review", "available", "matched"].includes(item.status),
       ).length,
     [donations],
   );
 
   const completedDonations = useMemo(
-    () =>
-      donations.filter((item) =>
-        ["collected", "donated"].includes(item.status ?? ""),
-      ).length,
+    () => donations.filter((item) => item.status === "collected").length,
     [donations],
   );
 
   const matchedDonations = useMemo(
-    () =>
-      donations.filter(
-        (item) => item.status === "matched",
-      ).length,
+    () => donations.filter((item) => item.status === "matched").length,
     [donations],
   );
 
@@ -171,54 +128,48 @@ export default function DonorDashboard() {
 
         {!loading && !error && donations.length > 0 && (
           <div className="grid">
-            {donations.map((donation) => (
-              <Card key={donation.id}>
-                {donation.imageUrls?.[0] && (
-                  <img
-                    src={donation.imageUrls[0]}
-                    alt={donation.title}
-                    className="donation-image"
-                  />
-                )}
+            {donations.map((donation) => {
+              const primaryPhoto =
+                donation.photos?.find((photo) => photo.isPrimary) ??
+                donation.photos?.[0];
 
-                <div>
-                  <small>
-                    {donation.category ?? "Furniture"}
-                  </small>
-
-                  <h3>{donation.title}</h3>
-
-                  <p>
-                    Status:{" "}
-                    <strong>
-                      {formatStatus(
-                        donation.status ?? "available",
-                      )}
-                    </strong>
-                  </p>
-
-                  {donation.createdAt && (
-                    <small>
-                      Submitted{" "}
-                      {donation.createdAt
-                        .toDate()
-                        .toLocaleDateString()}
-                    </small>
+              return (
+                <Card key={donation.id}>
+                  {primaryPhoto && (
+                    <img
+                      src={primaryPhoto.url}
+                      alt={donation.title}
+                      className="donation-image"
+                    />
                   )}
-                </div>
-              </Card>
-            ))}
+
+                  <div>
+                    <small>
+                      {donation.category ?? "Furniture"}
+                    </small>
+
+                    <h3>{donation.title}</h3>
+
+                    <p>
+                      Status:{" "}
+                      <strong>
+                        {FURNITURE_STATUS_LABELS[donation.status]}
+                      </strong>
+                    </p>
+
+                    {donation.createdAt && (
+                      <small>
+                        Submitted{" "}
+                        {new Date(donation.createdAt).toLocaleDateString()}
+                      </small>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         )}
       </section>
     </main>
   );
-}
-
-function formatStatus(status: string) {
-  return status
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase(),
-    );
 }

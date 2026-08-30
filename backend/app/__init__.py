@@ -19,6 +19,9 @@ def create_app(test_config=None):
     app.config.update(
         FIREBASE_PROJECT_ID=os.getenv("FIREBASE_PROJECT_ID"),
         AUTH_DISABLED=os.getenv("AUTH_DISABLED", "0") == "1",
+        WEB_ORIGIN=os.getenv("WEB_ORIGIN", "http://localhost:3000"),
+        WHATSAPP_BOT_URL=os.getenv("WHATSAPP_BOT_URL"),
+        WHATSAPP_BOT_SECRET=os.getenv("WHATSAPP_BOT_SECRET"),
     )
 
     if test_config:
@@ -39,12 +42,7 @@ def create_app(test_config=None):
 
     CORS(
         app,
-        origins=[
-            os.getenv(
-                "WEB_ORIGIN",
-                "http://localhost:3000",
-            )
-        ],
+        origins=[app.config["WEB_ORIGIN"]],
         allow_headers=[
             "Content-Type",
             "Authorization",

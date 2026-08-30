@@ -1,6 +1,6 @@
 import Card from "../../common/components/Card";
 import StatusBadge from "../../common/components/StatusBadge";
-import type { Furniture } from "./FurnitureDTO";
+import type { Furniture } from "../../common/dto/FurnitureDTO";
 
 export default function FurnitureCard({
   item,
@@ -50,6 +50,14 @@ export default function FurnitureCard({
           {dimensionLabel && (
             <small>{dimensionLabel}</small>
           )}
+
+          <div className="furniture-card-meta">
+            {item.collection?.donorCanDeliver
+              ? "Donor can deliver"
+              : "Collection only"}
+            {" · "}
+            Qty {item.quantity}
+          </div>
         </div>
       </Card>
     </div>

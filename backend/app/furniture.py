@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 
+from firebase_admin import firestore
 from flask import Blueprint, abort, g, jsonify, request
 
 from .auth import require_auth
 from .firebase import get_db, serialise
 from .validation import public_patch, require_fields
+from .whatsapp import notify_new_listing
 
 furniture_bp = Blueprint("furniture", __name__, url_prefix="/api/furniture")
 COLLECTION = "furniture"
@@ -33,6 +35,19 @@ def list_furniture():
     if status:
         query = query.where("status", "==", status)
     return jsonify([serialise(document) for document in query.limit(100).stream()])
+
+
+@furniture_bp.get("/mine")
+@require_auth({"donor", "admin"})
+def list_my_furniture():
+    """A donor's own donations, in every status, newest first."""
+    query = (
+        get_db()
+        .collection(COLLECTION)
+        .where("donorId", "==", g.user["uid"])
+        .order_by("createdAt", direction=firestore.Query.DESCENDING)
+    )
+    return jsonify([serialise(document) for document in query.stream()])
 
 
 @furniture_bp.post("")
@@ -132,11 +147,18 @@ def admin_update_furniture(furniture_id):
     if not document.exists:
         abort(404)
 
+    previous_status = document.to_dict().get("status")
+
     reference.update({
         "status": status,
         "updatedAt": datetime.now(timezone.utc),
     })
 
+    updated = reference.get()
+
+    if status == "available" and previous_status != "available":
+        notify_new_listing(serialise(updated))
+
     return jsonify(
-        serialise(reference.get())
+        serialise(updated)
     ), 200
