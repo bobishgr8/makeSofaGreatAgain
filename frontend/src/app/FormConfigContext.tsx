@@ -42,6 +42,8 @@ const defaultFormConfig: FormConfig = {
   whatsapp: true,
   safeToUse: true,
   offeredFree: true,
+  petHousehold: true,
+  smokingHousehold: true,
   contactConsent: true,
   photos: true,
 };

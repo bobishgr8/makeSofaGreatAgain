@@ -183,6 +183,24 @@ export default function FurnitureDetailsPage() {
               : "No"
           }
         />
+
+        <DetailRow
+          label="Pet household"
+          value={
+            item.safety?.petHousehold
+              ? "Yes"
+              : "No"
+          }
+        />
+
+        <DetailRow
+          label="Smoking household"
+          value={
+            item.safety?.smokingHousehold
+              ? "Yes"
+              : "No"
+          }
+        />
       </section>
 
       <section className="furniture-details-section">

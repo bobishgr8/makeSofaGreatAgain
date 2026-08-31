@@ -7,6 +7,7 @@ body {
   background: var(--cream-base);
   color: var(--ink-body);
   font-family: "Source Sans 3", Arial, sans-serif;
+  overflow-wrap: break-word;
 }
 
 h1,
@@ -47,6 +48,12 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.brand-logo {
+  height: 40px;
+  width: auto;
+  display: block;
 }
 
 .brand > span {
@@ -248,6 +255,8 @@ textarea {
 
 .furniture-card-content h2 {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font: 600 20px "Petrona", serif;
 }
 
@@ -302,6 +311,14 @@ textarea {
   gap: 16px;
 }
 
+.furniture-details-heading > div {
+  min-width: 0;
+}
+
+.furniture-details-heading h1 {
+  overflow-wrap: anywhere;
+}
+
 .detail-row {
   display: flex;
   justify-content: space-between;
@@ -317,6 +334,13 @@ textarea {
 
 .detail-row span {
   color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.detail-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 /* ---------- Metrics ---------- */
@@ -379,15 +403,31 @@ textarea {
 
 /* ---------- Admin dashboard ---------- */
 
-.admin-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+.admin-panel {
+  overflow: hidden;
   margin-top: 24px;
 }
 
-.admin-panel {
-  overflow: hidden;
+.admin-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.admin-toolbar input,
+.admin-toolbar select {
+  border: 1px solid var(--cream-deep);
+  background: var(--cream-white);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--ink-body);
+  font-size: 13px;
+}
+
+.admin-toolbar input {
+  flex: 1;
+  min-width: 200px;
 }
 
 .admin-panel-fullwidth {
@@ -414,10 +454,21 @@ textarea {
 
 .admin-table th,
 .admin-table td {
-  padding: 12px 0;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--cream-deep);
   vertical-align: top;
   text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.admin-table th:first-child,
+.admin-table td:first-child {
+  padding-left: 0;
+}
+
+.admin-table th:last-child,
+.admin-table td:last-child {
+  padding-right: 0;
 }
 
 .admin-table th {
@@ -466,9 +517,14 @@ textarea {
   gap: 10px;
 }
 
+.admin-furniture-card-header > div {
+  min-width: 0;
+}
+
 .admin-furniture-card-header h3 {
   margin: 4px 0 0;
   font-size: 16px;
+  overflow-wrap: anywhere;
 }
 
 .admin-furniture-meta {
@@ -476,6 +532,16 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   font-size: 12px;
+}
+
+.admin-furniture-meta > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-furniture-meta strong {
+  overflow-wrap: anywhere;
 }
 
 .admin-furniture-id {
@@ -542,9 +608,14 @@ textarea {
   gap: 12px;
 }
 
+.case-card-header > div {
+  min-width: 0;
+}
+
 .case-card-header h3 {
   margin: 4px 0 0;
   font-size: 18px;
+  overflow-wrap: anywhere;
 }
 
 .case-card-meta {
@@ -553,6 +624,16 @@ textarea {
   gap: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--cream-deep);
+}
+
+.case-card-meta > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.case-card-meta strong {
+  overflow-wrap: anywhere;
 }
 
 .case-needs {

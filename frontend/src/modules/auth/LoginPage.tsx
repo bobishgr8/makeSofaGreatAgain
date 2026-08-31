@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { SubmitEventHandler } from "react";
 import { signInWithEmailAndPassword, signInWithPopup, signInAnonymously, User} from "firebase/auth";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { auth, googleProvider } from "../../common/firebase";
 
 import Button from "../../common/components/Button";
@@ -15,6 +15,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
+  // Set by ProtectedRoute when it bounced an unauthenticated visitor here
+  // (e.g. someone following the WhatsApp bot's donation-form link).
+  const from = (location.state as { from?: string } | null)?.from;
 
   /**
    * Ask the backend to assign a role.
@@ -97,7 +101,7 @@ export default function LoginPage() {
       throw new Error("This account does not have a role assigned.");
     }
 
-    navigate("/furniture");
+    navigate(from ?? "/furniture", { replace: true });
   }
 
   const submit: SubmitEventHandler<HTMLFormElement> = async (event) => {
@@ -239,6 +243,7 @@ export default function LoginPage() {
           <Link
             className="button secondary"
             to="/register"
+            state={location.state}
           >
             Create account
           </Link>

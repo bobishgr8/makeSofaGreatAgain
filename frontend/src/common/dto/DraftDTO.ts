@@ -21,5 +21,7 @@ export type Draft = {
   whatsapp: string;
   safeToUse: boolean;
   offeredFree: boolean;
+  petHousehold: boolean;
+  smokingHousehold: boolean;
   contactConsent: boolean;
 };

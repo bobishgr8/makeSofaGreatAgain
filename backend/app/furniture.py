@@ -5,7 +5,7 @@ from flask import Blueprint, abort, g, jsonify, request
 
 from .auth import require_auth
 from .firebase import get_db, serialise
-from .validation import public_patch, require_fields
+from .validation import public_patch, require_fields, validate_furniture
 from .whatsapp import notify_new_listing
 
 furniture_bp = Blueprint("furniture", __name__, url_prefix="/api/furniture")
@@ -13,8 +13,12 @@ COLLECTION = "furniture"
 EDITABLE = {
     "title", "category", "subcategory", "description", "condition",
     "conditionNotes", "dimensionsCm", "quantity", "photos", "location",
-    "collection", "safety", "status",
+    "collection", "safety",
 }
+# Deliberately excludes "status": that's driven by dedicated, authorized
+# transitions instead (admin_update_furniture, withdraw_furniture, and the
+# reserve/collect/deliver flow in matching.py) rather than a generic patch,
+# so a donor or social worker can't set it to an arbitrary value.
 
 FURNITURE_STATUSES = {
     "pending_review",
@@ -22,6 +26,7 @@ FURNITURE_STATUSES = {
     "rejected",
     "matched",
     "collected",
+    "delivered",
     "withdrawn",
 }
 @furniture_bp.get("")
@@ -54,9 +59,14 @@ def list_my_furniture():
 @require_auth({"donor", "admin", "social_worker"})
 def create_furniture():
     data = request.get_json(force=True)
-    require_fields(data, ["title", "category", "condition", "location", "collection"])
-    now = datetime.now(timezone.utc)
+    require_fields(
+        data, ["title", "category", "condition", "conditionNotes", "location", "collection"]
+    )
     item = public_patch(data, EDITABLE)
+    errors = validate_furniture(item)
+    if errors:
+        return jsonify({"error": "; ".join(errors)}), 400
+    now = datetime.now(timezone.utc)
     item.update({
         "donorId": g.user["uid"],
         "status": "pending_review",
@@ -88,6 +98,9 @@ def update_furniture(item_id):
     if g.user["role"] == "donor" and existing.get("donorId") != g.user["uid"]:
         return jsonify({"error": "This donation belongs to another donor"}), 403
     changes = public_patch(request.get_json(force=True), EDITABLE)
+    errors = validate_furniture(changes)
+    if errors:
+        return jsonify({"error": "; ".join(errors)}), 400
     changes["updatedAt"] = datetime.now(timezone.utc)
     reference.update(changes)
     return jsonify(serialise(reference.get()))

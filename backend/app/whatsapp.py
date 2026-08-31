@@ -3,6 +3,8 @@ import logging
 import requests
 from flask import current_app
 
+from .config import CATEGORY_LABELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,9 +21,10 @@ def notify_new_listing(item: dict) -> None:
         return
 
     location = item.get("location") or {}
+    category = item.get("category")
     payload = {
         "title": item.get("title") or "Untitled furniture",
-        "category": item.get("category"),
+        "category": CATEGORY_LABELS.get(category, category),
         "condition": item.get("condition"),
         "neighbourhood": location.get("district"),
         "url": f"{current_app.config.get('WEB_ORIGIN')}/furniture/{item.get('id')}",

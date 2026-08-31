@@ -1,5 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import LandingPage from "../modules/home/LandingPage";
+import WishlistPage from "../modules/home/WishlistPage";
+
 import LoginPage from "../modules/auth/LoginPage";
 import RegisterPage from "../modules/auth/RegisterPage";
 import UnauthorizedPage from "../common/components/UnauthorisedPage";
@@ -26,7 +29,7 @@ export function AppRouter() {
       {/* Default */}
       <Route
         path="/"
-        element={<Navigate to="/furniture" replace />}
+        element={<LandingPage />}
       />
 
       {/* Public */}
@@ -48,6 +51,11 @@ export function AppRouter() {
       <Route
         path="/furniture"
         element={<FurnitureList />}
+      />
+
+      <Route
+        path="/wishlist"
+        element={<WishlistPage />}
       />
 
       {/* Donor */}

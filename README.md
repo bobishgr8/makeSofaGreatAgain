@@ -82,3 +82,24 @@ PATCH              /api/matches/:id
 ```
 
 The matching engine first rejects incompatible or unavailable furniture, then scores category, neighbourhood, condition, delivery logistics and household priority. Every result includes a score breakdown and plain-language reasons.
+
+## Donation form validation limits
+
+`backend/app/validation.py` is the source of truth — it runs on every `POST /api/furniture`, `PATCH /api/furniture/:id` and `PATCH /api/donors/me`, so it can't be bypassed by calling the API directly. `frontend/src/modules/furniture/FurnitureForm.tsx` mirrors the same numbers so a donor gets an immediate, specific message (e.g. "Quantity must be a whole number between 1 and 20") instead of a round trip to the server to find out `-9999` isn't a valid number of washing machines.
+
+| Field | Rule |
+|---|---|
+| Quantity | whole number, 1–20 |
+| Width / depth / height (cm) | whole number, 1–500 |
+| Floor | whole number, 0–150 |
+| Listing title | 3–120 characters |
+| Subcategory | up to 80 characters |
+| Condition note | 5–800 characters |
+| Photos | up to 5 |
+| Condition, fits-in-lift, disassembly, delivery area, deadline type | must be one of that field's allowed choices |
+| Contact name | up to 80 characters |
+| WhatsApp number | must match `+?[0-9()\- ]{7,20}` (optional leading `+`, digits, spaces/hyphens/parentheses) |
+
+The validator only checks fields that are actually present in the request body, so a donor's partial `PATCH` isn't forced to resend every field. Covered by `backend/tests/test_validation.py` (`python -m pytest backend/tests -q`).
+
+Two fields — "This item came from a home with pets" and "This item came from a smoking household" — are informational disclosures rather than constrained inputs: they're plain booleans with no format to validate, shown to the recipient/social worker on the listing's Safety section.

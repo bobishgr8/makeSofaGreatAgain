@@ -11,6 +11,8 @@ export const defaultCategoryLabels: CategoryLabels = {
   chair: "chair",
   bed: "bed",
   storage: "storage unit",
+  washing_machine: "washing machine",
+  fridge: "fridge",
   other: "furniture item",
 };
 
@@ -65,5 +67,7 @@ export const defaultInitialDraft = (): Draft => ({
   whatsapp: "",
   safeToUse: false,
   offeredFree: false,
+  petHousehold: false,
+  smokingHousehold: false,
   contactConsent: false,
 });

@@ -8,6 +8,8 @@ export type Match = {
   socialWorkerId?: string;
   status?: string;
   reasons: string[];
+  notes?: string;
+  reservedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 };

@@ -28,11 +28,24 @@ FORM_FIELD_KEYS = {
     "whatsapp",
     "safeToUse",
     "offeredFree",
+    "petHousehold",
+    "smokingHousehold",
     "contactConsent",
     "photos",
 }
 
 FORM_FIELDS_DOC = ("platformConfig", "formFields")
+
+CATEGORY_LABELS = {
+    "sofa": "sofa",
+    "table": "table",
+    "chair": "chair",
+    "bed": "bed",
+    "storage": "storage unit",
+    "washing_machine": "washing machine",
+    "fridge": "fridge",
+    "other": "furniture item",
+}
 
 
 def default_form_fields():
@@ -56,14 +69,7 @@ def get_form_fields():
 @config_bp.get("")
 def get_config():
     # Server-authoritative UI configuration and sensible defaults.
-    category_labels = {
-        "sofa": "sofa",
-        "table": "table",
-        "chair": "chair",
-        "bed": "bed",
-        "storage": "storage unit",
-        "other": "furniture item",
-    }
+    category_labels = CATEGORY_LABELS
 
     neighbourhoods = [
         "Ang Mo Kio",
@@ -116,6 +122,8 @@ def get_config():
         "whatsapp": "",
         "safeToUse": False,
         "offeredFree": False,
+        "petHousehold": False,
+        "smokingHousehold": False,
         "contactConsent": False,
     }
 

@@ -8,9 +8,13 @@ import FurnitureCard from "../furniture/FurnitureCard";
 import type { Furniture } from "../../common/dto/FurnitureDTO";
 import type { Match } from "../../common/dto/MatchDTO";
 
-type Mode = "matches" | "browse" | "saved";
+type Mode = "matches" | "browse" | "saved" | "reserved";
 
 const SAVED_KEY = "refurbish-saved-furniture";
+
+// Match statuses that represent an active or completed reservation, as
+// opposed to a still-unclaimed suggestion or one that was turned down.
+const RESERVATION_STATUSES = ["reserved", "collected", "delivered", "completed"];
 
 export default function MatchList() {
   const [searchParams] = useSearchParams();
@@ -24,6 +28,7 @@ export default function MatchList() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [furniture, setFurniture] = useState<Furniture[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [reservedMatches, setReservedMatches] = useState<Match[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -103,6 +108,28 @@ export default function MatchList() {
     }
   }
 
+  async function loadReservedMatches() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const data = await api<Match[]>("/api/matches");
+
+      setReservedMatches(
+        data.filter(
+          (item) =>
+            item.status && RESERVATION_STATUSES.includes(item.status),
+        ),
+      );
+    } catch (err) {
+      console.error("Failed to load reservations:", err);
+
+      setError("We couldn't load your reservations.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function toggleSaved(furnitureId: string) {
     setSavedIds((current) => {
       const next = current.includes(furnitureId)
@@ -135,6 +162,10 @@ export default function MatchList() {
       furniture.length === 0
     ) {
       void loadFurniture();
+    }
+
+    if (nextMode === "reserved") {
+      void loadReservedMatches();
     }
   }
 
@@ -205,6 +236,18 @@ export default function MatchList() {
         >
           Saved ({savedIds.length})
         </button>
+
+        <button
+          type="button"
+          className={
+            mode === "reserved"
+              ? "button"
+              : "button secondary"
+          }
+          onClick={() => changeMode("reserved")}
+        >
+          My reservations
+        </button>
       </div>
 
       {error && (
@@ -242,9 +285,48 @@ export default function MatchList() {
               savedMode
             />
           )}
+
+          {mode === "reserved" && (
+            <ReservedMatches matches={reservedMatches} />
+          )}
         </>
       )}
     </main>
+  );
+}
+
+function ReservedMatches({ matches }: { matches: Match[] }) {
+  if (!matches.length) {
+    return (
+      <div className="empty">
+        <h2>No reservations yet.</h2>
+        <p>
+          Reserve a matched item from a case's suggested matches and it will
+          appear here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <section>
+      <div className="section-heading">
+        <div>
+          <h2>My reservations</h2>
+
+          <p className="muted-text">
+            {matches.length} active reservation
+            {matches.length === 1 ? "" : "s"}.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid match-grid">
+        {matches.map((match) => (
+          <MatchCard key={match.id} match={match} showCase />
+        ))}
+      </div>
+    </section>
   );
 }
 

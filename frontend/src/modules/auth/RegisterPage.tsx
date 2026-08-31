@@ -1,7 +1,7 @@
 import { SubmitEventHandler, useState } from "react";
-import {createUserWithEmailAndPassword, signInWithPopup, signInAnonymously, updateProfile,} from "firebase/auth";
+import {createUserWithEmailAndPassword, signInWithPopup, signInAnonymously, updateProfile, User,} from "firebase/auth";
 import { serverTimestamp } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {auth, db, googleProvider,} from "../../common/firebase";
 
@@ -12,9 +12,37 @@ type UserRole = "donor" | "social_worker";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Set by ProtectedRoute when it bounced an unauthenticated visitor here
+  // (e.g. someone following the WhatsApp bot's donation-form link), or
+  // forwarded along from LoginPage's "Create account" link.
+  const from = (location.state as { from?: string } | null)?.from;
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  async function assignRole(user: User, role: UserRole) {
+    const idToken = await user.getIdToken();
+
+    const response = await fetch(`${API_URL}/auth/set-role`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        idToken,
+        role,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.json();
+      throw new Error(body.error ?? "Could not assign role");
+    }
+
+    // Force Firebase to fetch a new token containing the new claim.
+    await user.getIdToken(true);
+  }
 
   const submit: SubmitEventHandler<HTMLFormElement> = async (event) => {
   event.preventDefault();
@@ -78,7 +106,7 @@ export default function RegisterPage() {
     console.log("==============================");
 
     // 6. Done
-    navigate("/furniture");
+    navigate(from ?? "/furniture", { replace: true });
   } catch (err) {
     console.error("Registration error:", err);
     }
@@ -107,10 +135,14 @@ export default function RegisterPage() {
       */
       const role: UserRole = "donor";
 
-      console.log("GOOGLE USER:", user);
-      console.log("ROLE:", role);
+      // Only assign a role if this account doesn't already have one
+      // (e.g. an existing user clicked "Continue with Google" by mistake).
+      const existingRole = (await user.getIdTokenResult()).claims.role;
+      if (!existingRole) {
+        await assignRole(user, role);
+      }
 
-      navigate("/donor");
+      navigate(from ?? "/furniture", { replace: true });
     } catch (err) {
       console.error("Google registration error:", err);
       setError("Could not continue with Google.");

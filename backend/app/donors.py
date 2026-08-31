@@ -4,7 +4,7 @@ from flask import Blueprint, abort, g, jsonify, request
 
 from .auth import require_auth
 from .firebase import get_db, serialise
-from .validation import public_patch
+from .validation import public_patch, validate_donor_profile
 
 donors_bp = Blueprint("donors", __name__, url_prefix="/api/donors")
 
@@ -25,6 +25,9 @@ def update_profile():
         request.get_json(force=True),
         {"displayName", "phone", "preferredContactMethod", "address", "consent"},
     )
+    errors = validate_donor_profile(data)
+    if errors:
+        return jsonify({"error": "; ".join(errors)}), 400
     data["updatedAt"] = datetime.now(timezone.utc)
     reference = get_db().collection("donorProfiles").document(g.user["uid"])
     reference.set(data, merge=True)

@@ -12,6 +12,26 @@ import "./FurnitureForm.css";
 
 type SelectedPhoto = { id: string; file: File; preview: string };
 
+// Mirrors backend/app/validation.py — the backend is the real gate, these
+// are here so the donor gets an immediate, specific message instead of a
+// round trip to find out "-9999" isn't a valid number of washing machines.
+const MIN_QUANTITY = 1;
+const MAX_QUANTITY = 20;
+const MIN_DIMENSION_CM = 1;
+const MAX_DIMENSION_CM = 500;
+const MIN_FLOOR = 0;
+const MAX_FLOOR = 150;
+const MIN_TITLE_LENGTH = 3;
+const MAX_TITLE_LENGTH = 120;
+const MIN_CONDITION_NOTES_LENGTH = 5;
+const MAX_CONDITION_NOTES_LENGTH = 800;
+const MAX_CONTACT_NAME_LENGTH = 80;
+const WHATSAPP_PATTERN = /^\+?[0-9()\-\s]{7,20}$/;
+
+function isValidNumber(value: string) {
+  return value.trim() !== "" && Number.isFinite(Number(value));
+}
+
 export default function FurnitureForm() {
   const { config, categoryLabels, neighbourhoods, initialDraft } =
     useFormConfig();
@@ -99,6 +119,28 @@ export default function FurnitureForm() {
       });
       if (missing)
         return "Add the item details, an honest condition note and at least one photo.";
+
+      if (
+        config.title &&
+        (draft.title.trim().length < MIN_TITLE_LENGTH ||
+          draft.title.trim().length > MAX_TITLE_LENGTH)
+      )
+        return `Listing title must be between ${MIN_TITLE_LENGTH} and ${MAX_TITLE_LENGTH} characters.`;
+
+      if (
+        config.conditionNotes &&
+        (draft.conditionNotes.trim().length < MIN_CONDITION_NOTES_LENGTH ||
+          draft.conditionNotes.trim().length > MAX_CONDITION_NOTES_LENGTH)
+      )
+        return `Condition note must be between ${MIN_CONDITION_NOTES_LENGTH} and ${MAX_CONDITION_NOTES_LENGTH} characters.`;
+
+      if (
+        config.quantity &&
+        (!Number.isInteger(draft.quantity) ||
+          draft.quantity < MIN_QUANTITY ||
+          draft.quantity > MAX_QUANTITY)
+      )
+        return `Quantity must be a whole number between ${MIN_QUANTITY} and ${MAX_QUANTITY}.`;
     }
 
     if (step === 2) {
@@ -125,6 +167,33 @@ export default function FurnitureForm() {
       });
       if (missing)
         return "Complete the dimensions, location, access and collection details.";
+
+      const dimensionFields: Array<[keyof Draft, string]> = [
+        ["widthCm", "Width"],
+        ["depthCm", "Depth"],
+        ["heightCm", "Height"],
+      ];
+      for (const [field, label] of dimensionFields) {
+        const value = draft[field] as string;
+        if (!config[field] || value === "") continue;
+        if (
+          !isValidNumber(value) ||
+          Number(value) < MIN_DIMENSION_CM ||
+          Number(value) > MAX_DIMENSION_CM
+        )
+          return `${label} must be a number between ${MIN_DIMENSION_CM} and ${MAX_DIMENSION_CM} cm.`;
+      }
+
+      if (config.floor && draft.floor !== "") {
+        if (
+          !isValidNumber(draft.floor) ||
+          !Number.isInteger(Number(draft.floor)) ||
+          Number(draft.floor) < MIN_FLOOR ||
+          Number(draft.floor) > MAX_FLOOR
+        )
+          return `Floor must be a whole number between ${MIN_FLOOR} and ${MAX_FLOOR}.`;
+      }
+
       if (
         config.deadlineType &&
         draft.deadlineType === "specific" &&
@@ -153,6 +222,12 @@ export default function FurnitureForm() {
       });
       if (missing)
         return "Confirm your contact details and all three declarations.";
+
+      if (config.contactName && draft.contactName.trim().length > MAX_CONTACT_NAME_LENGTH)
+        return `Contact name must be at most ${MAX_CONTACT_NAME_LENGTH} characters.`;
+
+      if (config.whatsapp && !WHATSAPP_PATTERN.test(draft.whatsapp.trim()))
+        return "Enter a valid WhatsApp number, e.g. +65 9123 4567.";
     }
 
     return "";
@@ -237,6 +312,8 @@ export default function FurnitureForm() {
           safety: {
             donorConfirmedSafe: draft.safeToUse,
             offeredFree: draft.offeredFree,
+            petHousehold: draft.petHousehold,
+            smokingHousehold: draft.smokingHousehold,
           },
         }),
       });
@@ -304,6 +381,7 @@ export default function FurnitureForm() {
                       update("subcategory", event.target.value)
                     }
                     placeholder="e.g. three-seater, dining, wardrobe"
+                    maxLength={80}
                   />
                 </FormField>
               )}
@@ -314,6 +392,8 @@ export default function FurnitureForm() {
                       value={draft.title}
                       onChange={(event) => update("title", event.target.value)}
                       required
+                      minLength={MIN_TITLE_LENGTH}
+                      maxLength={MAX_TITLE_LENGTH}
                     />
                   </FormField>
                 </div>
@@ -339,8 +419,9 @@ export default function FurnitureForm() {
                 <FormField label="Quantity">
                   <input
                     type="number"
-                    min="1"
-                    max="20"
+                    min={MIN_QUANTITY}
+                    max={MAX_QUANTITY}
+                    step={1}
                     value={draft.quantity}
                     onChange={(event) =>
                       update("quantity", Number(event.target.value))
@@ -357,12 +438,43 @@ export default function FurnitureForm() {
                         update("conditionNotes", event.target.value)
                       }
                       placeholder="Mention visible wear, stains, repairs or missing pieces."
+                      minLength={MIN_CONDITION_NOTES_LENGTH}
+                      maxLength={MAX_CONDITION_NOTES_LENGTH}
                       required
                     />
                   </FormField>
                 </div>
               )}
             </div>
+            {(config.petHousehold || config.smokingHousehold) && (
+              <fieldset className="choice-field">
+                <legend>Household disclosures</legend>
+                {config.petHousehold && (
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={draft.petHousehold}
+                      onChange={(event) =>
+                        update("petHousehold", event.target.checked)
+                      }
+                    />{" "}
+                    This item came from a home with pets
+                  </label>
+                )}
+                {config.smokingHousehold && (
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={draft.smokingHousehold}
+                      onChange={(event) =>
+                        update("smokingHousehold", event.target.checked)
+                      }
+                    />{" "}
+                    This item came from a smoking household
+                  </label>
+                )}
+              </fieldset>
+            )}
             {config.photos && (
               <div className="photo-field">
                 <strong>Photos</strong>
@@ -413,7 +525,8 @@ export default function FurnitureForm() {
                 <FormField label="Width (cm)">
                   <input
                     type="number"
-                    min="1"
+                    min={MIN_DIMENSION_CM}
+                    max={MAX_DIMENSION_CM}
                     value={draft.widthCm}
                     onChange={(event) => update("widthCm", event.target.value)}
                     required
@@ -424,7 +537,8 @@ export default function FurnitureForm() {
                 <FormField label="Depth (cm)">
                   <input
                     type="number"
-                    min="1"
+                    min={MIN_DIMENSION_CM}
+                    max={MAX_DIMENSION_CM}
                     value={draft.depthCm}
                     onChange={(event) => update("depthCm", event.target.value)}
                     required
@@ -435,7 +549,8 @@ export default function FurnitureForm() {
                 <FormField label="Height (cm)">
                   <input
                     type="number"
-                    min="1"
+                    min={MIN_DIMENSION_CM}
+                    max={MAX_DIMENSION_CM}
                     value={draft.heightCm}
                     onChange={(event) => update("heightCm", event.target.value)}
                     required
@@ -464,7 +579,8 @@ export default function FurnitureForm() {
                 <FormField label="Floor">
                   <input
                     type="number"
-                    min="1"
+                    min={MIN_FLOOR}
+                    max={MAX_FLOOR}
                     value={draft.floor}
                     onChange={(event) => update("floor", event.target.value)}
                     required
@@ -602,6 +718,7 @@ export default function FurnitureForm() {
                     onChange={(event) =>
                       update("contactName", event.target.value)
                     }
+                    maxLength={MAX_CONTACT_NAME_LENGTH}
                     required
                   />
                 </FormField>
@@ -613,6 +730,8 @@ export default function FurnitureForm() {
                     value={draft.whatsapp}
                     onChange={(event) => update("whatsapp", event.target.value)}
                     placeholder="+65 9123 4567"
+                    pattern={WHATSAPP_PATTERN.source}
+                    title="e.g. +65 9123 4567"
                     required
                   />
                 </FormField>

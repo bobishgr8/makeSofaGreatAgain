@@ -5,10 +5,20 @@ from flask import Blueprint, abort, g, jsonify, request
 from .auth import require_auth
 from .firebase import get_db, serialise
 from .validation import public_patch, require_fields
+from .wishlist import build_wishlist
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/api/cases")
 COLLECTION = "cases"
 EDITABLE = {"reference", "household", "location", "delivery", "priority", "status", "needs"}
+
+
+@cases_bp.get("/wishlist")
+def public_wishlist():
+    """Public furniture wishlist for the marketing site and donors browsing
+    without an account. See build_wishlist() for what it does and why.
+    """
+    cases = (document.to_dict() for document in get_db().collection(COLLECTION).stream())
+    return jsonify(build_wishlist(cases))
 
 
 @cases_bp.get("")

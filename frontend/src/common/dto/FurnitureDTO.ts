@@ -7,6 +7,7 @@ export const FURNITURE_STATUSES = [
   "rejected",
   "matched",
   "collected",
+  "delivered",
   "withdrawn",
 ] as const;
 
@@ -18,6 +19,7 @@ export const FURNITURE_STATUS_LABELS: Record<FurnitureStatus, string> = {
   rejected: "Rejected",
   matched: "Matched",
   collected: "Collected",
+  delivered: "Delivered",
   withdrawn: "Withdrawn",
 };
 
@@ -63,6 +65,8 @@ export type Furniture = {
   safety?: {
     donorConfirmedSafe?: boolean;
     offeredFree?: boolean;
+    petHousehold?: boolean;
+    smokingHousehold?: boolean;
   };
 
   donorId: string;

@@ -3,11 +3,15 @@ import { AppRouter } from "./router";
 import { FormConfigProvider } from "./FormConfigContext";
 import { useAuth } from "./AuthProvider";
 import { useEffect } from "react";
+import logo from "../assets/logo.png";
 
 export default function App() {
   const { user, logout } = useAuth();
-  const logoSrc = ""; // set this to your logo image path if desired
-  const faviconSrc = ""; // set this to your favicon image path if desired
+  const logoSrc = logo;
+  // The source asset is a wide wordmark lockup, not a square icon — using it
+  // as-is would render illegibly small in a browser tab, so leave the
+  // favicon unset until a cropped icon-only mark exists.
+  const faviconSrc = "";
 
   useEffect(() => {
     if (!faviconSrc) return;
@@ -27,16 +31,19 @@ export default function App() {
       <header className="app-header">
         <Link className="brand" to="/">
           {logoSrc ? (
-            <img className="brand-logo" src={logoSrc} alt="ReFurbish Singapore logo" />
+            <img className="brand-logo" src={logoSrc} alt="ReFurbish Singapore" />
           ) : (
-            <span>RF</span>
+            <>
+              <span>RF</span>
+              <strong>
+                ReFurbish <small>Singapore</small>
+              </strong>
+            </>
           )}
-          <strong>
-            ReFurbish <small>Singapore</small>
-          </strong>
         </Link>
         <nav>
           <NavLink to="/furniture">Furniture</NavLink>
+          <NavLink to="/wishlist">Wishlist</NavLink>
           <NavLink to="/donate">Donate</NavLink>
           <NavLink to="/workspace">Social work</NavLink>
           <NavLink to="/admin">Admin</NavLink>

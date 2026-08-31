@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../common/api";
 import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
 import Button from "../../common/components/Button";
 import Card from "../../common/components/Card";
-import type { Furniture } from "../../common/dto/FurnitureDTO";
-import { FURNITURE_STATUS_LABELS } from "../../common/dto/FurnitureDTO";
+import type { Furniture, FurnitureStatus } from "../../common/dto/FurnitureDTO";
+import { FURNITURE_STATUS_LABELS, FURNITURE_STATUSES } from "../../common/dto/FurnitureDTO";
+
+type AdminTab = "users" | "furniture" | "form";
+type RoleFilter = "all" | "donor" | "social_worker" | "admin" | "unassigned";
+type FurnitureStatusFilter = "all" | FurnitureStatus;
 
 type UserRow = {
   id: string;
@@ -40,6 +44,8 @@ const formFields: Array<keyof FormConfig> = [
   "whatsapp",
   "safeToUse",
   "offeredFree",
+  "petHousehold",
+  "smokingHousehold",
   "contactConsent",
   "photos",
 ];
@@ -67,6 +73,8 @@ const fieldLabels: Record<keyof FormConfig, string> = {
   whatsapp: "WhatsApp number",
   safeToUse: "Safe to use",
   offeredFree: "Offered free",
+  petHousehold: "Pet household",
+  smokingHousehold: "Smoking household",
   contactConsent: "Contact consent",
   photos: "Photos",
 };
@@ -74,13 +82,20 @@ const fieldLabels: Record<keyof FormConfig, string> = {
 export default function AdminDashboard() {
   const { config, toggleField } = useFormConfig();
 
+  const [tab, setTab] = useState<AdminTab>("users");
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<RoleFilter>("all");
 
   const [furniture, setFurniture] = useState<Furniture[]>([]);
   const [furnitureLoading, setFurnitureLoading] = useState(true);
   const [furnitureError, setFurnitureError] = useState<string | null>(null);
+  const [furnitureSearch, setFurnitureSearch] = useState("");
+  const [furnitureStatusFilter, setFurnitureStatusFilter] =
+    useState<FurnitureStatusFilter>("all");
 
   const loadUsers = useCallback(async () => {
     try {
@@ -240,6 +255,44 @@ export default function AdminDashboard() {
     (item) => item.status === "pending_review",
   ).length;
 
+  const filteredUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesQuery =
+        !query ||
+        user.name.toLowerCase().includes(query) ||
+        user.email.toLowerCase().includes(query);
+
+      const matchesRole =
+        userRoleFilter === "all" ||
+        (userRoleFilter === "unassigned"
+          ? !user.role
+          : user.role === userRoleFilter);
+
+      return matchesQuery && matchesRole;
+    });
+  }, [users, userSearch, userRoleFilter]);
+
+  const filteredFurniture = useMemo(() => {
+    const query = furnitureSearch.trim().toLowerCase();
+
+    return furniture.filter((item) => {
+      const matchesQuery =
+        !query ||
+        (item.title ?? "").toLowerCase().includes(query) ||
+        (item.category ?? "").toLowerCase().includes(query) ||
+        (item.subcategory ?? "").toLowerCase().includes(query) ||
+        (item.donorId ?? "").toLowerCase().includes(query);
+
+      const matchesStatus =
+        furnitureStatusFilter === "all" ||
+        item.status === furnitureStatusFilter;
+
+      return matchesQuery && matchesStatus;
+    });
+  }, [furniture, furnitureSearch, furnitureStatusFilter]);
+
   return (
     <main className="page">
       <div className="page-heading">
@@ -289,6 +342,33 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
+      <div className="match-tabs">
+        <button
+          type="button"
+          className={tab === "users" ? "button" : "button secondary"}
+          onClick={() => setTab("users")}
+        >
+          Users
+        </button>
+
+        <button
+          type="button"
+          className={tab === "furniture" ? "button" : "button secondary"}
+          onClick={() => setTab("furniture")}
+        >
+          Furniture listings
+        </button>
+
+        <button
+          type="button"
+          className={tab === "form" ? "button" : "button secondary"}
+          onClick={() => setTab("form")}
+        >
+          Form experience
+        </button>
+      </div>
+
+      {tab === "form" && (
       <Card className="admin-panel admin-panel-fullwidth">
         <div className="admin-panel-header">
           <h2>Form experience</h2>
@@ -328,15 +408,40 @@ export default function AdminDashboard() {
           ))}
         </div>
       </Card>
+      )}
 
-      <div className="admin-grid">
-        <Card className="admin-panel">
+      {tab === "users" && (
+        <Card className="admin-panel admin-panel-fullwidth">
           <div className="admin-panel-header">
             <h2>Users</h2>
 
             <span className="pill">
-              {users.length} total
+              {filteredUsers.length === users.length
+                ? `${users.length} total`
+                : `${filteredUsers.length} of ${users.length}`}
             </span>
+          </div>
+
+          <div className="admin-toolbar">
+            <input
+              type="search"
+              placeholder="Search by name or email"
+              value={userSearch}
+              onChange={(event) => setUserSearch(event.target.value)}
+            />
+
+            <select
+              value={userRoleFilter}
+              onChange={(event) =>
+                setUserRoleFilter(event.target.value as RoleFilter)
+              }
+            >
+              <option value="all">All roles</option>
+              <option value="donor">Donor</option>
+              <option value="social_worker">Social worker</option>
+              <option value="admin">Admin</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
           </div>
 
           {usersError && (
@@ -353,6 +458,10 @@ export default function AdminDashboard() {
             <p className="muted-text">
               No users yet.
             </p>
+          ) : filteredUsers.length === 0 ? (
+            <p className="muted-text">
+              No users match your search or filter.
+            </p>
           ) : (
             <table className="admin-table">
               <thead>
@@ -366,7 +475,7 @@ export default function AdminDashboard() {
               </thead>
 
               <tbody>
-                {users.map((user) => (
+                {filteredUsers.map((user) => (
                   <tr key={user.id}>
                     <td>
                       <strong>
@@ -471,7 +580,9 @@ export default function AdminDashboard() {
             </table>
           )}
         </Card>
+      )}
 
+      {tab === "furniture" && (
         <Card className="admin-panel admin-panel-fullwidth">
           <div className="admin-panel-header">
             <div>
@@ -482,8 +593,35 @@ export default function AdminDashboard() {
             </div>
 
             <span className="pill">
-              {furniture.length} listed
+              {filteredFurniture.length === furniture.length
+                ? `${furniture.length} listed`
+                : `${filteredFurniture.length} of ${furniture.length}`}
             </span>
+          </div>
+
+          <div className="admin-toolbar">
+            <input
+              type="search"
+              placeholder="Search by title, category or owner"
+              value={furnitureSearch}
+              onChange={(event) => setFurnitureSearch(event.target.value)}
+            />
+
+            <select
+              value={furnitureStatusFilter}
+              onChange={(event) =>
+                setFurnitureStatusFilter(
+                  event.target.value as FurnitureStatusFilter,
+                )
+              }
+            >
+              <option value="all">All statuses</option>
+              {FURNITURE_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {FURNITURE_STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
           </div>
 
           {furnitureError && (
@@ -503,9 +641,16 @@ export default function AdminDashboard() {
                 Submitted furniture will appear here.
               </p>
             </div>
+          ) : filteredFurniture.length === 0 ? (
+            <div className="empty-state">
+              <h3>No matches</h3>
+              <p className="muted-text">
+                No furniture matches your search or filter.
+              </p>
+            </div>
           ) : (
             <div className="admin-furniture-grid">
-              {furniture.map((item) => (
+              {filteredFurniture.map((item) => (
                 <article
                   className="admin-furniture-card"
                   key={item.id}
@@ -553,21 +698,24 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="admin-furniture-actions">
-                    <Button
-                      type="button"
-                      className={
-                        item.status === "available"
-                          ? "secondary"
-                          : ""
-                      }
-                      onClick={() =>
-                        toggleFurnitureStatus(item)
-                      }
-                    >
-                      {item.status === "available"
-                        ? "Flag for review"
-                        : "Approve listing"}
-                    </Button>
+                    {(item.status === "available" ||
+                      item.status === "pending_review") && (
+                      <Button
+                        type="button"
+                        className={
+                          item.status === "available"
+                            ? "secondary"
+                            : ""
+                        }
+                        onClick={() =>
+                          toggleFurnitureStatus(item)
+                        }
+                      >
+                        {item.status === "available"
+                          ? "Flag for review"
+                          : "Approve listing"}
+                      </Button>
+                    )}
 
                     <Link
                       className="button secondary"
@@ -581,7 +729,7 @@ export default function AdminDashboard() {
             </div>
           )}
         </Card>
-      </div>
+      )}
     </main>
   );
 }

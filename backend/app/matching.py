@@ -8,6 +8,22 @@ from .scoring import score_match
 
 matching_bp = Blueprint("matching", __name__, url_prefix="/api/matches")
 
+MATCH_STATUSES = {
+    "reviewed", "offered", "accepted", "declined",
+    "reserved", "collected", "delivered", "completed", "cancelled",
+}
+
+# Match statuses that also drive the furniture record's own status, so the
+# public listing, admin console and donor dashboard all reflect a reservation
+# without the frontend having to update two records itself.
+FURNITURE_MIRROR_STATUS = {
+    "reserved": "matched",
+    "collected": "collected",
+    "delivered": "delivered",
+}
+
+MAX_NOTES_LENGTH = 1000
+
 
 @matching_bp.get("")
 @require_auth({"social_worker", "admin"})
@@ -54,12 +70,48 @@ def generate_matches():
 @matching_bp.patch("/<match_id>")
 @require_auth({"social_worker", "admin"})
 def update_match(match_id):
-    allowed_statuses = {"reviewed", "offered", "accepted", "declined", "reserved", "completed", "cancelled"}
-    status = request.get_json(force=True).get("status")
-    if status not in allowed_statuses:
+    data = request.get_json(force=True)
+    status = data.get("status")
+    if status not in MATCH_STATUSES:
         return jsonify({"error": "Unsupported match status"}), 400
-    reference = get_db().collection("matches").document(match_id)
-    if not reference.get().exists:
+
+    db = get_db()
+    reference = db.collection("matches").document(match_id)
+    document = reference.get()
+    if not document.exists:
         return jsonify({"error": "Match not found"}), 404
-    reference.update({"status": status, "updatedAt": datetime.now(timezone.utc)})
+    match = document.to_dict()
+
+    if g.user["role"] == "social_worker" and match.get("socialWorkerId") != g.user["uid"]:
+        return jsonify({"error": "This match belongs to another social worker"}), 403
+
+    updates = {"status": status, "updatedAt": datetime.now(timezone.utc)}
+
+    if status == "reserved":
+        notes = (data.get("notes") or "").strip()
+        if not notes:
+            return jsonify({
+                "error": "Add a note on how you'll contact the recipient before reserving"
+            }), 400
+        if len(notes) > MAX_NOTES_LENGTH:
+            return jsonify({
+                "error": f"Reservation notes must be at most {MAX_NOTES_LENGTH} characters"
+            }), 400
+        updates["notes"] = notes
+        updates["reservedAt"] = datetime.now(timezone.utc)
+
+    if status in ("collected", "delivered") and match.get("status") not in ("reserved", "collected"):
+        return jsonify({"error": "Reserve this item before marking it collected or delivered"}), 409
+
+    furniture_status = FURNITURE_MIRROR_STATUS.get(status)
+    if furniture_status:
+        furniture_ref = db.collection("furniture").document(match.get("furnitureId"))
+        furniture_document = furniture_ref.get()
+        if not furniture_document.exists:
+            return jsonify({"error": "Furniture no longer exists"}), 404
+        if status == "reserved" and furniture_document.to_dict().get("status") != "available":
+            return jsonify({"error": "This item is no longer available to reserve"}), 409
+        furniture_ref.update({"status": furniture_status, "updatedAt": datetime.now(timezone.utc)})
+
+    reference.update(updates)
     return jsonify(serialise(reference.get()))
