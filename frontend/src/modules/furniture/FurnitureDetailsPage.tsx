@@ -21,9 +21,10 @@ export default function FurnitureDetailsPage() {
         setItem(furniture);
 
         if (furniture.donorId) {
+            // Needs sign-in; anonymous visitors still see the listing itself.
             const donorProfile = await api<DonorProfile>(
             `/api/donors/me/${furniture.donorId}`
-            );
+            ).catch(() => null);
 
             setDonor(donorProfile);
         }

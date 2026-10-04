@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api } from "../../common/api";
+import { api, ApiError } from "../../common/api";
 import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
 import Button from "../../common/components/Button";
 import Card from "../../common/components/Card";
-import type { Furniture } from "../../common/dto/FurnitureDTO";
+import type { FurnitureAction, FurnitureView } from "../../common/dto/FurnitureDTO";
 import { FURNITURE_STATUS_LABELS } from "../../common/dto/FurnitureDTO";
 
 type UserRow = {
@@ -78,9 +78,11 @@ export default function AdminDashboard() {
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
 
-  const [furniture, setFurniture] = useState<Furniture[]>([]);
+  const [furniture, setFurniture] = useState<FurnitureView[]>([]);
   const [furnitureLoading, setFurnitureLoading] = useState(true);
   const [furnitureError, setFurnitureError] = useState<string | null>(null);
+  const [pendingFurnitureId, setPendingFurnitureId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<{ id: string; reason: string } | null>(null);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -106,7 +108,7 @@ export default function AdminDashboard() {
       setFurnitureLoading(true);
       setFurnitureError(null);
 
-      const data = await api<Furniture[]>(
+      const data = await api<FurnitureView[]>(
         "/api/furniture/admin/all",
       );
 
@@ -159,37 +161,51 @@ export default function AdminDashboard() {
     }
   }
 
-  async function toggleFurnitureStatus(
-    item: Furniture,
+  async function runFurnitureAction(
+    item: FurnitureView,
+    action: FurnitureAction,
+    reason?: string,
   ) {
-    const nextStatus =
-      item.status === "available"
-        ? "pending_review"
-        : "available";
+    if (pendingFurnitureId) return;
+    setPendingFurnitureId(item.id);
+    setFurnitureError(null);
 
     try {
-      await api(`/api/furniture/admin/${item.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          status: nextStatus,
-        }),
-      });
+      const updated = await api<FurnitureView>(
+        `/api/furniture/${item.id}/actions/${action}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            expected_status: item.status,
+            reason,
+          }),
+        },
+      );
 
       setFurniture((current) =>
         current.map((furnitureItem) =>
-          furnitureItem.id === item.id
-            ? {
-                ...furnitureItem,
-                status: nextStatus,
-              }
-            : furnitureItem,
+          furnitureItem.id === item.id ? updated : furnitureItem,
         ),
       );
+      setRejecting(null);
     } catch (error) {
       console.error(
         "Failed to update furniture status",
         error,
       );
+
+      setFurnitureError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't update the listing.",
+      );
+
+      // Someone else changed it first: show the current state.
+      if (error instanceof ApiError && error.status === 409) {
+        void loadFurniture();
+      }
+    } finally {
+      setPendingFurnitureId(null);
     }
   }
 
@@ -552,22 +568,88 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {rejecting?.id === item.id && (
+                    <label className="form-field">
+                      <span>Why is this listing rejected?</span>
+                      <textarea
+                        value={rejecting.reason}
+                        maxLength={500}
+                        onChange={(event) =>
+                          setRejecting({
+                            id: item.id,
+                            reason: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  )}
+
                   <div className="admin-furniture-actions">
-                    <Button
-                      type="button"
-                      className={
-                        item.status === "available"
-                          ? "secondary"
-                          : ""
-                      }
-                      onClick={() =>
-                        toggleFurnitureStatus(item)
-                      }
-                    >
-                      {item.status === "available"
-                        ? "Flag for review"
-                        : "Approve listing"}
-                    </Button>
+                    {/* Buttons come from the server's allowedActions. */}
+                    {item.allowedActions.includes("approve") && (
+                      <Button
+                        type="button"
+                        disabled={pendingFurnitureId === item.id}
+                        onClick={() =>
+                          runFurnitureAction(item, "approve")
+                        }
+                      >
+                        Approve listing
+                      </Button>
+                    )}
+
+                    {item.allowedActions.includes("reject") &&
+                      (rejecting?.id === item.id ? (
+                        <>
+                          <Button
+                            type="button"
+                            className="secondary"
+                            disabled={
+                              !rejecting.reason.trim() ||
+                              pendingFurnitureId === item.id
+                            }
+                            onClick={() =>
+                              runFurnitureAction(
+                                item,
+                                "reject",
+                                rejecting.reason.trim(),
+                              )
+                            }
+                          >
+                            Confirm reject
+                          </Button>
+                          <Button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setRejecting(null)}
+                          >
+                            Keep
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          className="secondary"
+                          onClick={() =>
+                            setRejecting({ id: item.id, reason: "" })
+                          }
+                        >
+                          Reject
+                        </Button>
+                      ))}
+
+                    {item.allowedActions.includes("flag_for_review") && (
+                      <Button
+                        type="button"
+                        className="secondary"
+                        disabled={pendingFurnitureId === item.id}
+                        onClick={() =>
+                          runFurnitureAction(item, "flag_for_review")
+                        }
+                      >
+                        Flag for review
+                      </Button>
+                    )}
 
                     <Link
                       className="button secondary"

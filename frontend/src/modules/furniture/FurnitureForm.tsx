@@ -6,8 +6,10 @@ import Button from "../../common/components/Button";
 import FormField from "../../common/components/FormField";
 import { api } from "../../common/api";
 import { auth, storage } from "../../common/firebase";
-import { useFormConfig } from "../../app/FormConfigContext";
+import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
+import { todaySgt } from "../../common/dates";
 import type { Draft } from "../../common/dto/DraftDTO";
+import type { FurnitureView } from "../../common/dto/FurnitureDTO";
 import "./FurnitureForm.css";
 
 type SelectedPhoto = { id: string; file: File; preview: string };
@@ -79,7 +81,7 @@ export default function FurnitureForm() {
 
   function validateStep() {
     if (step === 1) {
-      const requiredFields: Array<keyof Draft | "photos"> = [
+      const requiredFields: Array<keyof FormConfig> = [
         "title",
         "category",
         "condition",
@@ -102,7 +104,7 @@ export default function FurnitureForm() {
     }
 
     if (step === 2) {
-      const requiredFields: Array<keyof Draft> = [
+      const requiredFields: Array<Exclude<keyof FormConfig, "photos">> = [
         "widthCm",
         "depthCm",
         "heightCm",
@@ -123,8 +125,10 @@ export default function FurnitureForm() {
           (Array.isArray(value) && value.length === 0)
         );
       });
-      if (missing)
+      if (missing || !draft.pickupAddress.trim() || !draft.expectedDeliveryDate)
         return "Complete the dimensions, location, access and collection details.";
+      if (draft.expectedDeliveryDate < todaySgt())
+        return "The expected delivery date can't be in the past.";
       if (
         config.deadlineType &&
         draft.deadlineType === "specific" &&
@@ -134,7 +138,7 @@ export default function FurnitureForm() {
     }
 
     if (step === 3) {
-      const requiredFields: Array<keyof Draft> = [
+      const requiredFields: Array<Exclude<keyof FormConfig, "photos">> = [
         "contactName",
         "whatsapp",
         "safeToUse",
@@ -204,9 +208,11 @@ export default function FurnitureForm() {
         }),
       });
 
-      await api("/api/furniture", {
+      const created = await api<FurnitureView>("/api/furniture", {
         method: "POST",
         body: JSON.stringify({
+          pickupAddress: draft.pickupAddress.trim(),
+          expectedDeliveryDate: draft.expectedDeliveryDate,
           title: draft.title,
           category: draft.category,
           subcategory: draft.subcategory || null,
@@ -240,9 +246,7 @@ export default function FurnitureForm() {
           },
         }),
       });
-      navigate("/donor", {
-        state: { message: "Donation submitted for review." },
-      });
+      navigate(`/donor/furniture/${created.id}`);
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -460,6 +464,28 @@ export default function FurnitureForm() {
                   </select>
                 </FormField>
               )}
+              <FormField label="Pick-up address">
+                <input
+                  value={draft.pickupAddress}
+                  maxLength={200}
+                  placeholder="e.g. 88 Tampines Road"
+                  onChange={(event) =>
+                    update("pickupAddress", event.target.value)
+                  }
+                  required
+                />
+              </FormField>
+              <FormField label="Expected delivery date">
+                <input
+                  type="date"
+                  min={todaySgt()}
+                  value={draft.expectedDeliveryDate}
+                  onChange={(event) =>
+                    update("expectedDeliveryDate", event.target.value)
+                  }
+                  required
+                />
+              </FormField>
               {config.floor && (
                 <FormField label="Floor">
                   <input

@@ -63,7 +63,9 @@ npm run dev
 ## Test
 
 ```bash
-python -m unittest backend/tests/test_matching.py -v
+python -m unittest discover -s backend/tests -v
+# Route tests run only against the Firestore emulator (needs Java):
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 python -m unittest backend/tests/test_furniture_api.py -v
 cd frontend && npm run build
 ```
 
@@ -73,7 +75,9 @@ cd frontend && npm run build
 GET/PATCH          /api/donors/me
 GET                /api/social-workers/me
 GET/POST           /api/furniture
-GET/PATCH/DELETE   /api/furniture/:id
+GET                /api/furniture/mine
+GET/PATCH          /api/furniture/:id
+POST               /api/furniture/:id/actions/:action
 GET/POST           /api/cases
 GET/PATCH/DELETE   /api/cases/:id
 GET                /api/matches
@@ -82,3 +86,5 @@ PATCH              /api/matches/:id
 ```
 
 The matching engine first rejects incompatible or unavailable furniture, then scores category, neighbourhood, condition, delivery logistics and household priority. Every result includes a score breakdown and plain-language reasons.
+
+Furniture status changes only through `backend/app/lifecycle.py`: the transition table says which role can move an item from which status, and `POST /api/furniture/:id/actions/:action` (with the `expected_status` the screen was showing) is the only way to run one. Each change writes the item, a `statusHistory` entry and a `notificationsOutbox` entry in one transaction. Pick-up addresses live in `furniture/{id}/private/contact`, never on the listing.

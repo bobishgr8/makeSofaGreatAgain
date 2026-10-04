@@ -8,6 +8,7 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 firebase-debug.log
+firestore-debug.log
 package-lock.json
 /frontend/package-lock.json
 firebaseServiceAccount.json

@@ -1,0 +1,211 @@
+/* Donor item pages (status dashboard rows, State 1 screens, cancel and edit).
+   Single column, phone-first, matching the delivery-state wireframes. */
+
+.donor-item {
+  max-width: 560px;
+  margin: auto;
+  padding: 32px 16px 80px;
+  display: grid;
+  gap: 20px;
+}
+
+.donor-item-back {
+  color: var(--ink-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.donor-item h1 {
+  font: 600 30px/1.15 "Petrona", serif;
+  margin: 0;
+  color: var(--ink-heading);
+}
+
+.donor-item-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.donor-item-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: calc(var(--radius-card) - 8px);
+  background: var(--cream-card);
+}
+
+.donor-item-status {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.donor-item-status small {
+  color: var(--ink-muted);
+}
+
+.info-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--cream-card);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.info-card svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-heading);
+}
+
+.info-card strong {
+  display: block;
+  color: var(--ink-heading);
+  font-size: 14px;
+}
+
+.info-card p {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+.button.block {
+  width: 100%;
+}
+
+.donor-item-details {
+  border-top: 1px solid var(--cream-deep);
+  padding-top: 20px;
+}
+
+.donor-item-details header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.donor-item-details h2 {
+  font: 600 20px "Petrona", serif;
+  margin: 0;
+}
+
+.donor-item-details a {
+  color: var(--ink-heading);
+  font-weight: 600;
+}
+
+.donor-item-form {
+  display: grid;
+  gap: 16px;
+}
+
+.donor-item-form .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.donor-item-note {
+  color: var(--ink-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ---------- Status dashboard ---------- */
+
+.stage-counters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 40px;
+}
+
+.stage-counter {
+  background: var(--cream-white);
+  border: 1px solid var(--cream-deep);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.stage-counter strong {
+  display: block;
+  font: 600 30px "Petrona", serif;
+  color: var(--ink-heading);
+}
+
+.stage-counter span {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.donation-rows {
+  display: grid;
+  gap: 12px;
+}
+
+.donation-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  background: var(--cream-white);
+  border: 1px solid var(--cream-deep);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.donation-row:hover {
+  border-color: var(--charcoal);
+}
+
+.donation-row img,
+.donation-row-photo {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--cream-card);
+}
+
+.donation-row h3 {
+  font: 600 18px "Petrona", serif;
+  margin: 0 0 4px;
+}
+
+.donation-row p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .stage-counters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .donation-row {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .donation-row img,
+  .donation-row-photo {
+    width: 72px;
+    height: 72px;
+  }
+
+  .donation-row .status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .donor-item-form .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

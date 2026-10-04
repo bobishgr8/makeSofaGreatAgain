@@ -15,7 +15,10 @@ import {
   type CategoryLabels,
 } from "../common/config";
 
-type FormFieldKey = keyof Draft | "photos";
+// The pick-up address and expected delivery date drive the donation's lifecycle
+// (status page, expiry), so admins can't hide them.
+type AlwaysShownField = "pickupAddress" | "expectedDeliveryDate";
+type FormFieldKey = Exclude<keyof Draft, AlwaysShownField> | "photos";
 
 export type FormConfig = Record<FormFieldKey, boolean>;
 

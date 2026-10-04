@@ -24,6 +24,44 @@ VALID_APPROVAL_STATUSES = {
 }
 
 
+def _demo_user():
+    return {
+        "uid": request.headers.get(
+            "X-Demo-User",
+            "demo-social-worker",
+        ),
+        "role": request.headers.get(
+            "X-Demo-Role",
+            "social_worker",
+        ),
+        "approval": request.headers.get(
+            "X-Demo-Approval",
+            "approved",
+        ),
+    }
+
+
+def optional_user():
+    """The signed-in caller, or None for anonymous requests.
+
+    For public endpoints that show more to the owner. An invalid token is
+    treated as anonymous rather than rejected.
+    """
+    if current_app.config.get("AUTH_DISABLED"):
+        return _demo_user() if "X-Demo-User" in request.headers else None
+
+    header = request.headers.get("Authorization", "")
+
+    if not header.startswith("Bearer "):
+        return None
+
+    try:
+        return auth.verify_id_token(header.removeprefix("Bearer ").strip())
+
+    except Exception:
+        return None
+
+
 def require_auth(roles=None, require_approval=False):
     allowed_roles = set(roles or [])
 
@@ -31,20 +69,7 @@ def require_auth(roles=None, require_approval=False):
         @wraps(route)
         def wrapped(*args, **kwargs):
             if current_app.config.get("AUTH_DISABLED"):
-                g.user = {
-                    "uid": request.headers.get(
-                        "X-Demo-User",
-                        "demo-social-worker",
-                    ),
-                    "role": request.headers.get(
-                        "X-Demo-Role",
-                        "social_worker",
-                    ),
-                    "approval": request.headers.get(
-                        "X-Demo-Approval",
-                        "approved",
-                    ),
-                }
+                g.user = _demo_user()
 
             else:
                 header = request.headers.get("Authorization", "")

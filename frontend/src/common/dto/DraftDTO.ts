@@ -9,6 +9,8 @@ export type Draft = {
   depthCm: string;
   heightCm: string;
   neighbourhood: string;
+  pickupAddress: string;
+  expectedDeliveryDate: string;
   floor: string;
   hasLift: string;
   fitsInLift: string;

@@ -104,6 +104,8 @@ def get_config():
         "depthCm": "",
         "heightCm": "",
         "neighbourhood": "",
+        "pickupAddress": "",
+        "expectedDeliveryDate": "",
         "floor": "",
         "hasLift": "",
         "fitsInLift": "",
