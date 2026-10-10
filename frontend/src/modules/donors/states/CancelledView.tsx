@@ -1,19 +1,21 @@
 import StatusBadge from "../../../common/components/StatusBadge";
 import { formatDate } from "../../../common/dates";
-import type { FurnitureView } from "../../../common/dto/FurnitureDTO";
+import type { CancelKind, FurnitureView } from "../../../common/dto/FurnitureDTO";
 import { primaryPhoto } from "../useDonorFurniture";
 import { DetailsCard } from "./SubmittedView";
 
-function cancelledMessage(item: FurnitureView) {
-  if (item.status === "rejected") return "Not accepted after review.";
-  if (item.cancelReason === "no_match")
-    return "We couldn't find a match before your expected delivery date.";
-  return "You cancelled this donation.";
-}
+const CANCELLED_MESSAGES: Record<CancelKind, string> = {
+  donor: "You cancelled this donation.",
+  rejected: "Not accepted after review.",
+  no_match: "We couldn't find a match before your expected delivery date.",
+  no_connect: "This match closed because we didn't hear from you within 5 days.",
+};
 
 export default function CancelledView({ item }: { item: FurnitureView }) {
   const photo = primaryPhoto(item);
-  const showReason = item.cancelReason && item.cancelReason !== "no_match";
+  const kind = item.cancelKind ?? "donor";
+  // The system's reasons are codes, not something a person wrote.
+  const showReason = item.cancelReason && (kind === "donor" || kind === "rejected");
 
   return (
     <>
@@ -31,7 +33,7 @@ export default function CancelledView({ item }: { item: FurnitureView }) {
 
       <div className="info-card">
         <div>
-          <strong>{cancelledMessage(item)}</strong>
+          <strong>{CANCELLED_MESSAGES[kind]}</strong>
           {showReason && <p>Reason: {item.cancelReason}</p>}
         </div>
       </div>

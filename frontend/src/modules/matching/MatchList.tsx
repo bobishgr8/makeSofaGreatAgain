@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import MatchCard from "./MatchCard";
 import FurnitureCard from "../furniture/FurnitureCard";
 import type { Furniture } from "../../common/dto/FurnitureDTO";
-import type { Match } from "../../common/dto/MatchDTO";
+import type { Suggestion } from "../../common/dto/MatchDTO";
+import ProfilePrompt, {
+  type SocialWorkerProfile,
+} from "../socialWorkers/ProfilePrompt";
 
 type Mode = "matches" | "browse" | "saved";
 
@@ -14,6 +17,7 @@ const SAVED_KEY = "refurbish-saved-furniture";
 
 export default function MatchList() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const caseId = searchParams.get("case");
 
@@ -21,13 +25,24 @@ export default function MatchList() {
     caseId ? "matches" : "browse",
   );
 
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [furniture, setFurniture] = useState<Furniture[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [profile, setProfile] = useState<SocialWorkerProfile | null>(null);
+
+  // A request needs the organisation and WhatsApp number the donor will see,
+  // so ask for them here rather than letting the request fail.
+  useEffect(() => {
+    api<SocialWorkerProfile>("/api/social-workers/me")
+      .then(setProfile)
+      .catch(() => {});
+  }, []);
+
+  const profileComplete = Boolean(profile?.organisation && profile?.whatsapp);
 
   useEffect(() => {
     const stored = localStorage.getItem(SAVED_KEY);
@@ -45,41 +60,42 @@ export default function MatchList() {
 
   useEffect(() => {
     if (caseId) {
-      void generateMatches(caseId);
+      void loadSuggestions(caseId);
       return;
     }
 
     void loadFurniture();
   }, [caseId]);
 
-  async function generateMatches(selectedCaseId: string) {
+  // Read-only: the server ranks what is available right now. A match only
+  // exists once an item is requested.
+  async function loadSuggestions(selectedCaseId: string) {
     try {
       setLoading(true);
-      setGenerating(true);
       setError("");
 
-      const generated = await api<Match[]>(
-        "/api/matches/generate",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            caseId: selectedCaseId,
-          }),
-        },
+      setSuggestions(
+        await api<Suggestion[]>(
+          `/api/matches/suggestions?caseId=${encodeURIComponent(selectedCaseId)}`,
+        ),
       );
-
-      setMatches(generated);
       setMode("matches");
     } catch (err) {
-      console.error("Failed to generate matches:", err);
+      console.error("Failed to load suggestions:", err);
 
       setError(
-        "We couldn't generate furniture matches for this case.",
+        "We couldn't find furniture matches for this case.",
       );
     } finally {
       setLoading(false);
-      setGenerating(false);
     }
+  }
+
+  // Most often someone else requested the item first, so show what is left.
+  function requestFailed(message: string) {
+    const sentence = /[.!?]$/.test(message) ? message : `${message}.`;
+    setNotice(`${sentence} The list has been refreshed.`);
+    if (caseId) void loadSuggestions(caseId);
   }
 
   async function loadFurniture() {
@@ -214,15 +230,29 @@ export default function MatchList() {
         </div>
       )}
 
+      {caseId && profile && !profileComplete && (
+        <ProfilePrompt
+          profile={profile}
+          onSaved={(saved) => {
+            setProfile(saved);
+            setNotice("");
+          }}
+        />
+      )}
+
+      {notice && <p className="error-text">{notice}</p>}
+
       {loading ? (
         <LoadingSpinner />
       ) : (
         <>
-          {mode === "matches" && (
+          {mode === "matches" && caseId && (
             <MatchResults
-              matches={matches}
+              suggestions={suggestions}
               caseId={caseId}
-              generating={generating}
+              canRequest={profileComplete}
+              onRequested={() => navigate("/workspace")}
+              onFailed={requestFailed}
             />
           )}
 
@@ -249,25 +279,26 @@ export default function MatchList() {
 }
 
 function MatchResults({
-  matches,
+  suggestions,
   caseId,
-  generating,
+  canRequest,
+  onRequested,
+  onFailed,
 }: {
-  matches: Match[];
-  caseId: string | null;
-  generating: boolean;
+  suggestions: Suggestion[];
+  caseId: string;
+  canRequest: boolean;
+  onRequested: () => void;
+  onFailed: (message: string) => void;
 }) {
-  if (generating) {
-    return <LoadingSpinner />;
-  }
-
-  if (!matches.length) {
+  if (!suggestions.length) {
     return (
       <div className="empty">
         <h2>No suitable matches found.</h2>
 
         <p>
-          Try browsing the available furniture manually.
+          Nothing available fits this case right now. Try browsing the
+          available furniture manually.
         </p>
       </div>
     );
@@ -280,19 +311,22 @@ function MatchResults({
           <h2>Suggested matches</h2>
 
           <p className="muted-text">
-            {caseId
-              ? `${matches.length} candidates found for this case.`
-              : `${matches.length} candidates found.`}
+            {suggestions.length} candidates found for this case, ranked by
+            distance, fit and how soon the donor needs it gone.
           </p>
         </div>
       </div>
 
       <div className="grid match-grid">
-        {matches.map((match, index) => (
+        {suggestions.map((suggestion, index) => (
           <MatchCard
-            key={match.id}
-            match={match}
+            key={suggestion.furniture.id}
+            suggestion={suggestion}
+            caseId={caseId}
             rank={index + 1}
+            canRequest={canRequest}
+            onRequested={onRequested}
+            onFailed={onFailed}
           />
         ))}
       </div>

@@ -6,6 +6,9 @@ export const FURNITURE_STATUSES = [
   "available",
   "rejected",
   "matched",
+  "to_deliver",
+  "in_delivery",
+  "delivered",
   "collected",
   "withdrawn",
 ] as const;
@@ -17,6 +20,9 @@ export const FURNITURE_STATUS_LABELS: Record<FurnitureStatus, string> = {
   available: "Approved",
   rejected: "Rejected",
   matched: "Matched",
+  to_deliver: "To deliver",
+  in_delivery: "Delivery in progress",
+  delivered: "Delivered",
   collected: "Collected",
   withdrawn: "Withdrawn",
 };
@@ -51,12 +57,44 @@ export const CONDITION_LABELS: Record<string, string> = {
   repair_needed: "Needs minor repair",
 };
 
-export type FurnitureAction =
-  | "approve"
-  | "reject"
-  | "flag_for_review"
-  | "cancel_request"
-  | "edit";
+// Everything allowedActions can contain. Mirrors backend/app/lifecycle.py
+// CLIENT_ACTIONS (checked by backend/tests/test_type_sync.py).
+export const FURNITURE_ACTIONS = [
+  "approve",
+  "reject",
+  "flag_for_review",
+  "cancel_request",
+  "accept_match",
+  "connect",
+  "rematch",
+  "cancel_donation",
+  "release_match",
+  "arrange_delivery",
+  "propose_logistics",
+  "confirm_logistics",
+  "rearrange_logistics",
+  "complete_delivery",
+  "cancel_delivery",
+  "edit",
+] as const;
+
+export type FurnitureAction = (typeof FURNITURE_ACTIONS)[number];
+
+// The donor arranging transport themselves, rather than one of the priced
+// providers (backend/app/lifecycle.py OWN_LOGISTICS).
+export const OWN_LOGISTICS = "own";
+
+export function providerLabel(provider: string) {
+  return provider === OWN_LOGISTICS ? "Own transport" : provider;
+}
+
+// What propose_logistics takes: the State 3 form.
+export type LogisticsRequest = {
+  provider: string;
+  pickupAddress: string;
+  deliveryAddress: string;
+  deliveryDate: string;
+};
 
 export type Furniture = {
   id: string;
@@ -117,9 +155,37 @@ export type FurnitureView = Furniture & {
 
   expectedDeliveryDate?: string;
   cancelReason?: string | null;
+  cancelKind?: CancelKind;
   statusChangedAt?: string;
+  matchSummary?: MatchSummary;
   private?: {
     pickupAddress?: string;
+    // The beneficiary's address, kept only while a delivery is being arranged.
+    deliveryAddress?: string | null;
+  };
+};
+
+// Why a cancelled donation was cancelled (backend/app/lifecycle.py cancel_kind()).
+export type CancelKind = "donor" | "rejected" | "no_match" | "no_connect";
+
+// The active match, as the donor, the matched social worker or an admin sees it.
+export type MatchSummary = {
+  organisation?: string;
+  matchedAt?: string;
+  connectBy?: string;
+  connectedAt?: string | null;
+  connected: boolean;
+  overdue: boolean;
+  // Donor and admins only: the social worker's WhatsApp number.
+  whatsapp?: string;
+  // Social worker and admins only.
+  caseId?: string;
+  // The delivery details the donor sent; absent until they do (State 3).
+  logistics?: {
+    provider: string;
+    deliveryDate: string;
+    proposedAt?: string;
+    confirmedAt?: string;
   };
 };
 

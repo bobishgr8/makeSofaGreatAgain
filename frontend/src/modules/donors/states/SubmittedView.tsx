@@ -68,7 +68,7 @@ export function DetailsCard({ item }: { item: FurnitureView }) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value?: string }) {
+export function DetailRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="detail-row">
       <span>{label}</span>

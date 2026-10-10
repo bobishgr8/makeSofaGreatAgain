@@ -49,11 +49,19 @@ const defaultFormConfig: FormConfig = {
   photos: true,
 };
 
+// Indicative delivery prices (backend/app/config.py LOGISTICS_ESTIMATES).
+export type LogisticsEstimate = {
+  provider: string;
+  priceRange: string;
+  timing: string;
+};
+
 type ServerFormConfig = {
   categoryLabels?: CategoryLabels;
   neighbourhoods?: string[];
   initialDraft?: Draft;
   formFields?: Partial<FormConfig>;
+  logisticsEstimates?: LogisticsEstimate[];
 };
 
 type FormConfigContextValue = {
@@ -67,6 +75,7 @@ type FormConfigContextValue = {
   categoryLabels: CategoryLabels;
   neighbourhoods: string[];
   initialDraft: Draft;
+  logisticsEstimates: LogisticsEstimate[];
   configLoading: boolean;
 };
 
@@ -83,6 +92,7 @@ export function FormConfigProvider({ children }: { children: ReactNode }) {
   const [initialDraft, setInitialDraft] = useState<Draft>(
     defaultInitialDraft(),
   );
+  const [logisticsEstimates, setLogisticsEstimates] = useState<LogisticsEstimate[]>([]);
   const [configLoading, setConfigLoading] = useState(true);
 
   useEffect(() => {
@@ -94,6 +104,7 @@ export function FormConfigProvider({ children }: { children: ReactNode }) {
         if (data.categoryLabels) setCategoryLabels(data.categoryLabels);
         if (data.neighbourhoods) setNeighbourhoods(data.neighbourhoods);
         if (data.initialDraft) setInitialDraft(data.initialDraft);
+        if (data.logisticsEstimates) setLogisticsEstimates(data.logisticsEstimates);
         if (data.formFields) {
           setConfig((current) => ({ ...current, ...data.formFields }));
         }
@@ -139,6 +150,7 @@ export function FormConfigProvider({ children }: { children: ReactNode }) {
         categoryLabels,
         neighbourhoods,
         initialDraft,
+        logisticsEstimates,
         configLoading,
       }}
     >

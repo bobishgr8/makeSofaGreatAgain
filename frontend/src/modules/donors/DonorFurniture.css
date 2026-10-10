@@ -77,6 +77,174 @@
   width: 100%;
 }
 
+/* ---------- State 2: matched ---------- */
+
+.donor-item-status strong {
+  font: 600 18px "Petrona", serif;
+  color: var(--ink-heading);
+  margin-top: 8px;
+}
+
+.donor-item-status p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 14px;
+  max-width: 180px;
+}
+
+.donor-item-checklist {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--ink-body);
+  font-size: 14px;
+}
+
+.info-card .actions {
+  margin-top: 12px;
+}
+
+.logistics-estimates {
+  border-top: 1px solid var(--cream-deep);
+  padding-top: 20px;
+}
+
+.logistics-estimates h2 {
+  font: 600 20px "Petrona", serif;
+  margin: 0 0 12px;
+}
+
+.logistics-estimates ul {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  background: var(--cream-white);
+  border: 1px solid var(--cream-deep);
+  border-radius: 12px;
+}
+
+.logistics-estimates li {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.logistics-estimates li + li {
+  border-top: 1px solid var(--cream-deep);
+}
+
+.logistics-estimates li strong {
+  color: var(--ink-heading);
+}
+
+.logistics-estimates li span {
+  display: block;
+  color: var(--ink-body);
+}
+
+.logistics-estimates li small {
+  color: var(--ink-muted);
+}
+
+/* ---------- State 3: to deliver ---------- */
+
+.donor-item-form .form-field small {
+  font-weight: 400;
+}
+
+.logistics-options {
+  margin: 0;
+  padding: 0;
+  background: var(--cream-white);
+  border: 1px solid var(--cream-deep);
+  border-radius: 12px;
+}
+
+.logistics-options legend {
+  float: left;
+  width: 100%;
+  padding: 12px 16px;
+  font: 600 16px "Petrona", serif;
+  color: var(--ink-heading);
+}
+
+.logistics-options label {
+  clear: both;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid var(--cream-deep);
+  cursor: pointer;
+}
+
+.logistics-options strong {
+  color: var(--ink-heading);
+}
+
+.logistics-options span {
+  display: block;
+  color: var(--ink-body);
+}
+
+.logistics-options small {
+  color: var(--ink-muted);
+}
+
+/* One choice only, drawn as the tick box in the wireframe. */
+.logistics-options input {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1.5px solid var(--charcoal);
+  border-radius: 4px;
+  background: var(--cream-white);
+  cursor: pointer;
+}
+
+.logistics-options input:checked {
+  background: var(--charcoal);
+  box-shadow: inset 0 0 0 3px var(--cream-white);
+}
+
+.logistics-options input:focus-visible {
+  outline: 2px solid var(--charcoal);
+  outline-offset: 2px;
+}
+
+/* ---------- States 4 and 5: in delivery, delivered ---------- */
+
+.delivery-hero {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+  color: var(--ink-heading);
+}
+
+.delivery-hero h2 {
+  font: 600 22px "Petrona", serif;
+  margin: 0;
+}
+
+.delivery-hero p {
+  margin: 0;
+  max-width: 320px;
+  color: var(--ink-muted);
+}
+
+.delivery-item {
+  align-items: center;
+}
+
+.delivery-item.stacked {
+  flex-direction: column;
+  text-align: center;
+}
+
 .donor-item-details {
   border-top: 1px solid var(--cream-deep);
   padding-top: 20px;

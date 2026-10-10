@@ -48,6 +48,18 @@ def _read_private(reference):
     return _private_ref(reference).get().to_dict() or {}
 
 
+def _match_contact(db, item, user):
+    """The matched social worker's profile, for the donor's Connect button."""
+    social_worker_id = lifecycle.active_match(item).get("socialWorkerId")
+    if (
+        not social_worker_id
+        or not lifecycle.is_party(user, item)
+        or user.get("role") not in ("donor", "admin")
+    ):
+        return None
+    return db.collection(lifecycle.PROFILES).document(social_worker_id).get().to_dict()
+
+
 def _validated_pickup_address(value):
     try:
         address = clean_text(value, PICKUP_ADDRESS_MAX_LEN)
@@ -69,12 +81,10 @@ def _validated_delivery_date(value):
 def list_furniture():
     """Public listing of furniture. Authentication is required for create/update/delete
     operations, but the list view is intentionally public so donors and recipients can
-    browse available items without signing in. Only public fields are returned.
+    browse available items without signing in. Only available items and only public
+    fields are returned; admins see every status through /admin/all.
     """
-    query = get_db().collection(COLLECTION)
-    status = request.args.get("status")
-    if status:
-        query = query.where("status", "==", status)
+    query = get_db().collection(COLLECTION).where("status", "==", "available")
     return jsonify([
         lifecycle.view(_item(document), None)
         for document in query.limit(100).stream()
@@ -151,16 +161,20 @@ def create_furniture():
 
 @furniture_bp.get("/<item_id>")
 def get_furniture(item_id):
-    """The owner and admins see everything; anyone else sees an available listing only."""
+    """The owner, the matched social worker and admins see everything; anyone
+    else sees an available listing only."""
     user = optional_user()
-    reference = get_db().collection(COLLECTION).document(item_id)
+    db = get_db()
+    reference = db.collection(COLLECTION).document(item_id)
     snapshot = reference.get()
     if not snapshot.exists:
         abort(404)
     item = _item(snapshot)
 
     if lifecycle.is_party(user, item):
-        return jsonify(lifecycle.view(item, user, _read_private(reference)))
+        return jsonify(lifecycle.view(
+            item, user, _read_private(reference), _match_contact(db, item, user)
+        ))
     if item.get("status") != "available":
         abort(404)
     return jsonify(lifecycle.view(item, user))
@@ -192,8 +206,12 @@ def run_action(item_id, action):
     db = get_db()
     reference = db.collection(COLLECTION).document(item_id)
     item, changed = lifecycle.apply_action(db, reference, action, g.user, payload)
+    if changed and action in ("rematch", "release_match", "cancel_delivery"):
+        # Back in the pool, but possibly too late to be matched again.
+        item = lifecycle.expire_if_stale(db, reference, item, today_sgt())
 
-    result = lifecycle.view(item, g.user, _read_private(reference))
+    private = _read_private(reference) if lifecycle.is_party(g.user, item) else None
+    result = lifecycle.view(item, g.user, private, _match_contact(db, item, g.user))
     if changed and action == "approve":
         notify_new_listing(result)
     return jsonify(result)

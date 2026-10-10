@@ -1,8 +1,7 @@
 {
   "indexes": [
     { "collectionGroup": "furniture", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
-    { "collectionGroup": "furniture", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "donorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
-    { "collectionGroup": "matches", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "socialWorkerId", "order": "ASCENDING" }, { "fieldPath": "score", "order": "DESCENDING" }] }
+    { "collectionGroup": "furniture", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "donorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
   ],
   "fieldOverrides": []
 }

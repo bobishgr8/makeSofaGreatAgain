@@ -4,37 +4,23 @@ import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import StatusBadge from "../../common/components/StatusBadge";
 import type { Furniture } from "../../common/dto/FurnitureDTO";
-import type { DonorProfile } from "../../common/dto/DonorProfileDTO";
 
 
 export default function FurnitureDetailsPage() {
   const { id } = useParams<{ id: string }>();
-  const [donor, setDonor] = useState<DonorProfile | null>(null);
   const [item, setItem] = useState<Furniture | null>(null);
   const [loading, setLoading] = useState(true);
     
   useEffect(() => {
     if (!id) return;
 
+    // A donor's contact details are never shown here: a matched donor reaches
+    // the social worker on WhatsApp from their own donation page.
     api<Furniture>(`/api/furniture/${id}`)
-        .then(async (furniture) => {
-        setItem(furniture);
-
-        if (furniture.donorId) {
-            // Needs sign-in; anonymous visitors still see the listing itself.
-            const donorProfile = await api<DonorProfile>(
-            `/api/donors/me/${furniture.donorId}`
-            ).catch(() => null);
-
-            setDonor(donorProfile);
-        }
-        })
-        .catch(() => {
-        setItem(null);
-        setDonor(null);
-        })
-        .finally(() => setLoading(false));
-    }, [id]);
+      .then(setItem)
+      .catch(() => setItem(null))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   if (loading) {
     return <LoadingSpinner />;
@@ -185,35 +171,6 @@ export default function FurnitureDetailsPage() {
           }
         />
       </section>
-
-      <section className="furniture-details-section">
-        <h2>Donor</h2>
-
-        {donor ? (
-            <>
-            <DetailRow
-                label="Name"
-                value={donor.displayName}
-            />
-
-            <DetailRow
-                label="Phone"
-                value={
-                donor.consent?.contactAllowed
-                    ? donor.phone
-                    : "Contact not permitted"
-                }
-            />
-
-            <DetailRow
-                label="Preferred contact"
-                value={donor.preferredContactMethod}
-            />
-            </>
-        ) : (
-            <p>Donor details unavailable.</p>
-        )}
-        </section>
     </main>
   );
 }

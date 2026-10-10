@@ -25,6 +25,9 @@ class TypeSyncTests(unittest.TestCase):
     def test_donor_stages_match(self):
         self.assertEqual(ts_array("DONOR_STAGES"), list(lifecycle.DONOR_STAGES))
 
+    def test_furniture_actions_match(self):
+        self.assertEqual(ts_array("FURNITURE_ACTIONS"), list(lifecycle.CLIENT_ACTIONS))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from flask import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from .auth import require_auth
 from .firebase import get_db, serialise
@@ -29,22 +29,3 @@ def update_profile():
     reference = get_db().collection("donorProfiles").document(g.user["uid"])
     reference.set(data, merge=True)
     return jsonify(serialise(reference.get()))
-
-@donors_bp.get("/me/<donor_id>")
-@require_auth({"donor", "admin", "social_worker"})
-def get_donor_profile(donor_id: str):
-    document = get_db().collection("donorProfiles").document(donor_id).get()
-
-    if not document.exists:
-        abort(404, description="Donor profile not found")
-
-    data = serialise(document)
-
-    return jsonify({
-        "id": data["id"],
-        "displayName": data.get("displayName"),
-        "phone": data.get("phone"),
-        "preferredContactMethod": data.get("preferredContactMethod"),
-        "consent": data.get("consent"),
-        "updatedAt": data.get("updatedAt"),
-    })

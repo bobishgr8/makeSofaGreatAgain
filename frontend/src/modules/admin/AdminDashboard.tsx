@@ -539,7 +539,9 @@ export default function AdminDashboard() {
                       className={`pill ${
                         item.status === "available"
                           ? "pill-success"
-                          : "pill-danger"
+                          : item.donorStage === "cancelled"
+                            ? "pill-danger"
+                            : ""
                       }`}
                     >
                       {FURNITURE_STATUS_LABELS[item.status]}

@@ -21,13 +21,30 @@ export function useDonorFurniture(id: string | undefined) {
       .catch(() => mounted && setError("We could not find this donation."))
       .finally(() => mounted && setLoading(false));
 
+    // A match or a cancellation can happen while this page sits open, so pick
+    // up the latest state when the donor comes back to the tab.
+    function refresh() {
+      if (document.visibilityState !== "visible") return;
+      api<FurnitureView>(`/api/furniture/${id}`)
+        .then((latest) => mounted && setItem(latest))
+        .catch(() => {});
+    }
+    document.addEventListener("visibilitychange", refresh);
+
     return () => {
       mounted = false;
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, [id]);
 
   return { item, setItem, loading, error };
 }
+
+// What every stage screen receives. `onChange` takes the view an action returned.
+export type StageViewProps = {
+  item: FurnitureView;
+  onChange: (updated: FurnitureView) => void;
+};
 
 export function primaryPhoto(item: FurnitureView) {
   return item.photos?.find((photo) => photo.isPrimary) ?? item.photos?.[0];

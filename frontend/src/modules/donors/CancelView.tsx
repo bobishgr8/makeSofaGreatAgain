@@ -10,7 +10,7 @@ import { primaryPhoto, useDonorFurniture } from "./useDonorFurniture";
 import "./DonorFurniture.css";
 
 const REASON_MAX_LEN = 500;
-const CANCEL_ACTIONS: FurnitureAction[] = ["cancel_request"];
+const CANCEL_ACTIONS: FurnitureAction[] = ["cancel_request", "cancel_donation", "cancel_delivery"];
 
 // Nothing is cancelled until Submit. Retry goes back without cancelling.
 export default function CancelView() {

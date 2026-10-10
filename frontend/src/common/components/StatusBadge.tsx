@@ -14,23 +14,29 @@ type Props =
   | { stage: DonorStage; status?: never }
   | { status: string; stage?: never };
 
+export function StageIcon({ stage, size = 14 }: { stage: DonorStage; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={size > 24 ? 1.5 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={STAGE_ICONS[stage]} />
+    </svg>
+  );
+}
+
 export default function StatusBadge(props: Props) {
   if (props.stage) {
     return (
       <span className={`status status-stage-${props.stage.replaceAll("_", "-")}`}>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d={STAGE_ICONS[props.stage]} />
-        </svg>
+        <StageIcon stage={props.stage} />
         {STAGE_LABELS[props.stage]}
       </span>
     );

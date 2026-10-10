@@ -34,6 +34,43 @@ FORM_FIELD_KEYS = {
 
 FORM_FIELDS_DOC = ("platformConfig", "formFields")
 
+# Each one needs a region in scoring.NEIGHBOURHOOD_REGIONS.
+NEIGHBOURHOODS = [
+    "Ang Mo Kio",
+    "Bedok",
+    "Bishan",
+    "Bukit Batok",
+    "Bukit Merah",
+    "Bukit Panjang",
+    "Bukit Timah",
+    "Choa Chu Kang",
+    "Clementi",
+    "Geylang",
+    "Hougang",
+    "Jurong East",
+    "Jurong West",
+    "Kallang",
+    "Marine Parade",
+    "Pasir Ris",
+    "Punggol",
+    "Queenstown",
+    "Sembawang",
+    "Sengkang",
+    "Serangoon",
+    "Tampines",
+    "Toa Payoh",
+    "Woodlands",
+    "Yishun",
+]
+
+# Indicative only: we do not call the providers' APIs, and the ranges exclude
+# manpower (carrying, dismantling).
+LOGISTICS_ESTIMATES = [
+    {"provider": "Ninja Van", "priceRange": "S$38 – S$50", "timing": "1–3 working days"},
+    {"provider": "Lalamove", "priceRange": "S$45 – S$60", "timing": "Same day / Next day"},
+    {"provider": "GoGoVan", "priceRange": "S$50 – S$70", "timing": "1–3 working days"},
+]
+
 
 def default_form_fields():
     return {key: True for key in FORM_FIELD_KEYS}
@@ -65,34 +102,6 @@ def get_config():
         "other": "furniture item",
     }
 
-    neighbourhoods = [
-        "Ang Mo Kio",
-        "Bedok",
-        "Bishan",
-        "Bukit Batok",
-        "Bukit Merah",
-        "Bukit Panjang",
-        "Bukit Timah",
-        "Choa Chu Kang",
-        "Clementi",
-        "Geylang",
-        "Hougang",
-        "Jurong East",
-        "Jurong West",
-        "Kallang",
-        "Marine Parade",
-        "Pasir Ris",
-        "Punggol",
-        "Queenstown",
-        "Sembawang",
-        "Sengkang",
-        "Serangoon",
-        "Tampines",
-        "Toa Payoh",
-        "Woodlands",
-        "Yishun",
-    ]
-
     initial_draft = {
         "title": "",
         "category": "",
@@ -123,9 +132,10 @@ def get_config():
 
     return jsonify({
         "categoryLabels": category_labels,
-        "neighbourhoods": neighbourhoods,
+        "neighbourhoods": NEIGHBOURHOODS,
         "initialDraft": initial_draft,
         "formFields": get_form_fields(),
+        "logisticsEstimates": LOGISTICS_ESTIMATES,
     })
 
 

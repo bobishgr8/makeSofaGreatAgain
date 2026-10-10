@@ -1,65 +1,68 @@
-from datetime import datetime, timezone
-
 from flask import Blueprint, g, jsonify, request
 
+from . import lifecycle
 from .auth import require_auth
-from .firebase import get_db, serialise
+from .firebase import get_db
+from .furniture import _item, _private_ref
 from .scoring import score_match
+from .validation import today_sgt
 
 matching_bp = Blueprint("matching", __name__, url_prefix="/api/matches")
 
+SUGGESTION_LIMIT = 10
+
 
 @matching_bp.get("")
-@require_auth({"social_worker", "admin"})
+@require_auth({"social_worker", "admin"}, require_approval=True)
 def list_matches():
-    query = get_db().collection("matches")
-    if g.user["role"] != "admin":
-        query = query.where("socialWorkerId", "==", g.user["uid"])
-    return jsonify([serialise(document) for document in query.limit(100).stream()])
-
-
-@matching_bp.post("/generate")
-@require_auth({"social_worker", "admin"})
-def generate_matches():
+    """The furniture matched to the caller's cases, from the request through to
+    delivery (every match for an admin)."""
     db = get_db()
-    case_id = request.get_json(force=True).get("caseId")
-    case_document = db.collection("cases").document(case_id).get()
+    query = db.collection(lifecycle.COLLECTION)
+    if g.user["role"] == "admin":
+        query = query.where("status", "in", [*lifecycle.ACTIVE_MATCH_STATUSES, "delivered"])
+    else:
+        query = query.where("activeMatch.socialWorkerId", "==", g.user["uid"])
+    snapshots = list(query.limit(100).stream())
+
+    privates = {}
+    if snapshots:
+        for private in db.get_all([_private_ref(s.reference) for s in snapshots]):
+            privates[private.reference.parent.parent.id] = private.to_dict() or {}
+
+    return jsonify([
+        lifecycle.view(_item(snapshot), g.user, privates.get(snapshot.id, {}))
+        for snapshot in snapshots
+    ])
+
+
+@matching_bp.get("/suggestions")
+@require_auth({"social_worker", "admin"}, require_approval=True)
+def suggest_matches():
+    """Rank the available furniture for one case. Nothing is stored: a match
+    only exists once the social worker requests an item (lifecycle accept_match)."""
+    db = get_db()
+    case_id = request.args.get("caseId")
+    if not case_id:
+        return jsonify({"error": "caseId is required"}), 400
+    case_document = db.collection(lifecycle.CASES).document(case_id).get()
     if not case_document.exists:
         return jsonify({"error": "Case not found"}), 404
-    case = case_document.to_dict()
-    print(case)
+    case = {**case_document.to_dict(), "id": case_document.id}
+    if g.user["role"] != "admin" and case.get("socialWorkerId") != g.user["uid"]:
+        return jsonify({"error": "Case not found"}), 404
+
+    today = today_sgt()
     suggestions = []
-    for item_document in db.collection("furniture").where("status", "==", "available").stream():
-        item = item_document.to_dict()
-        result = score_match(item, case)
-        print(result)
+    available = db.collection(lifecycle.COLLECTION).where("status", "==", "available")
+    for document in available.stream():
+        item = _item(document)
+        if lifecycle.ineligible_reason(item, case, today):
+            continue
+        result = score_match(item, case, today)
         if result is None:
             continue
-        suggestion = {
-            "furnitureId": item_document.id,
-            "caseId": case_id,
-            "socialWorkerId": case.get("socialWorkerId"),
-            "status": "suggested",
-            "createdAt": datetime.now(timezone.utc),
-            **result,
-        }
-        reference = db.collection("matches").document()
-        reference.set(suggestion)
-        suggestions.append({"id": reference.id, **suggestion})
+        suggestions.append({"furniture": lifecycle.view(item, g.user), **result})
 
-    suggestions.sort(key=lambda match: match["score"], reverse=True)
-    return jsonify(suggestions[:10])
-
-
-@matching_bp.patch("/<match_id>")
-@require_auth({"social_worker", "admin"})
-def update_match(match_id):
-    allowed_statuses = {"reviewed", "offered", "accepted", "declined", "reserved", "completed", "cancelled"}
-    status = request.get_json(force=True).get("status")
-    if status not in allowed_statuses:
-        return jsonify({"error": "Unsupported match status"}), 400
-    reference = get_db().collection("matches").document(match_id)
-    if not reference.get().exists:
-        return jsonify({"error": "Match not found"}), 404
-    reference.update({"status": status, "updatedAt": datetime.now(timezone.utc)})
-    return jsonify(serialise(reference.get()))
+    suggestions.sort(key=lambda suggestion: suggestion["score"], reverse=True)
+    return jsonify(suggestions[:SUGGESTION_LIMIT])
