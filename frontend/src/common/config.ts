@@ -55,6 +55,8 @@ export const defaultInitialDraft = (): Draft => ({
   depthCm: "",
   heightCm: "",
   neighbourhood: "",
+  pickupAddress: "",
+  expectedDeliveryDate: "",
   floor: "",
   hasLift: "",
   fitsInLift: "",

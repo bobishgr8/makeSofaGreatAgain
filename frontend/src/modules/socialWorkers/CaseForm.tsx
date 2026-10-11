@@ -59,6 +59,13 @@ export default function CaseForm() {
               ? [
                   {
                     category: String(data.get("category")),
+                    // Only the sizes that were filled in. Items too big for
+                    // a fully described space are never suggested.
+                    maxDimensionsCm: Object.fromEntries(
+                      (["width", "depth", "height"] as const)
+                        .map((side) => [side, Number(data.get(`space-${side}`))])
+                        .filter(([, size]) => Number(size) > 0),
+                    ),
                   },
                 ]
               : [],
@@ -151,6 +158,21 @@ export default function CaseForm() {
               </select>
             </FormField>
           )}
+
+          {/* Case-specific: the space the furniture has to fit in */}
+          {config.category &&
+            (["width", "depth", "height"] as const).map((side) => (
+              <FormField
+                key={side}
+                label={`Space available: ${side} (cm, optional)`}
+              >
+                <input
+                  name={`space-${side}`}
+                  type="number"
+                  min="1"
+                />
+              </FormField>
+            ))}
 
           {/* Case-specific field */}
           <FormField label="Priority">

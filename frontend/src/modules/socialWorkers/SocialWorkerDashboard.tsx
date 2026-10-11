@@ -1,36 +1,52 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../common/api";
 import Card from "../../common/components/Card";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import type { Case } from "../../common/dto/CaseDTO";
+import type { FurnitureView } from "../../common/dto/FurnitureDTO";
+import ProfilePrompt, { type SocialWorkerProfile } from "./ProfilePrompt";
+import YourMatches from "./YourMatches";
 
 export default function SocialWorkerDashboard() {
   const [cases, setCases] = useState<Case[]>([]);
+  const [matches, setMatches] = useState<FurnitureView[]>([]);
+  const [profile, setProfile] = useState<SocialWorkerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function loadCases() {
-      try {
-        setLoading(true);
-        setError("");
+  // Cases and matches change together (a match fills a case's need), so they
+  // are always loaded as a pair.
+  const loadWorkspace = useCallback(async () => {
+    try {
+      setError("");
 
-        const data = await api<Case[]>("/api/cases");
+      const [caseData, matchData] = await Promise.all([
+        api<Case[]>("/api/cases"),
+        api<FurnitureView[]>("/api/matches"),
+      ]);
 
-        setCases(data);
-      } catch (err) {
-        console.error("Failed to load cases:", err);
+      setCases(caseData);
+      setMatches(matchData);
+    } catch (err) {
+      console.error("Failed to load cases:", err);
 
-        setError("We couldn't load your cases.");
-      } finally {
-        setLoading(false);
-      }
+      setError("We couldn't load your cases.");
+    } finally {
+      setLoading(false);
     }
-
-    void loadCases();
   }, []);
+
+  useEffect(() => {
+    void loadWorkspace();
+
+    api<SocialWorkerProfile>("/api/social-workers/me")
+      .then(setProfile)
+      .catch(() => {});
+  }, [loadWorkspace]);
+
+  const profileComplete = Boolean(profile?.organisation && profile?.whatsapp);
 
   const openCases = cases.filter(
     (caseItem) =>
@@ -93,6 +109,16 @@ export default function SocialWorkerDashboard() {
           </small>
         </Card>
       </div>
+
+      {profile && !profileComplete && (
+        <ProfilePrompt profile={profile} onSaved={setProfile} />
+      )}
+
+      <YourMatches
+        matches={matches}
+        cases={cases}
+        onChanged={() => void loadWorkspace()}
+      />
 
       <section>
         <div className="page-heading">
@@ -202,6 +228,10 @@ export default function SocialWorkerDashboard() {
                               need.category ??
                                 "unspecified",
                             )}
+                            {isDelivered(caseItem, need.category)
+                              ? " · delivered"
+                              : isMatched(caseItem, need.category) &&
+                                " · matched"}
                           </span>
                         ),
                       )}
@@ -213,20 +243,39 @@ export default function SocialWorkerDashboard() {
                   )}
                 </div>
 
-                <div className="actions">
-                  <Link
-                    className="button"
-                    to={`/matches?case=${caseItem.id}`}
-                  >
-                    Find furniture
-                  </Link>
-                </div>
+                {caseItem.needs?.some(
+                  (need) =>
+                    !isMatched(caseItem, need.category) &&
+                    !isDelivered(caseItem, need.category),
+                ) && (
+                  <div className="actions">
+                    <Link
+                      className="button"
+                      to={`/matches?case=${caseItem.id}`}
+                    >
+                      Find furniture
+                    </Link>
+                  </div>
+                )}
               </Card>
             ))}
           </div>
         )}
       </section>
     </main>
+  );
+}
+
+// The server keys a case's matched furniture by lower-cased category.
+function isMatched(caseItem: Case, category?: string) {
+  return Boolean(
+    category && caseItem.fulfilment?.[category.toLowerCase()],
+  );
+}
+
+function isDelivered(caseItem: Case, category?: string) {
+  return Boolean(
+    category && caseItem.delivered?.[category.toLowerCase()],
   );
 }
 

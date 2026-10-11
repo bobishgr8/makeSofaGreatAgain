@@ -63,7 +63,9 @@ npm run dev
 ## Test
 
 ```bash
-python -m unittest backend/tests/test_matching.py -v
+python -m unittest discover -s backend/tests -v
+# Route tests run only against the Firestore emulator (needs Java):
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 python -m unittest backend/tests/test_furniture_api.py -v
 cd frontend && npm run build
 ```
 
@@ -71,35 +73,21 @@ cd frontend && npm run build
 
 ```text
 GET/PATCH          /api/donors/me
-GET                /api/social-workers/me
+GET/PATCH          /api/social-workers/me
 GET/POST           /api/furniture
-GET/PATCH/DELETE   /api/furniture/:id
+GET                /api/furniture/mine
+GET/PATCH          /api/furniture/:id
+POST               /api/furniture/:id/actions/:action
 GET/POST           /api/cases
 GET/PATCH/DELETE   /api/cases/:id
 GET                /api/matches
-POST               /api/matches/generate
-PATCH              /api/matches/:id
+GET                /api/matches/suggestions?caseId=
 ```
 
-The matching engine first rejects incompatible or unavailable furniture, then scores category, neighbourhood, condition, delivery logistics and household priority. Every result includes a score breakdown and plain-language reasons.
+Matching ranks the available furniture for one case on what drives logistics cost: proximity (same neighbourhood, then same region), dimensions (the item must fit the space the case describes) and urgency (days left before the donor's delivery date). `backend/app/scoring.py` holds the score; `lifecycle.ineligible_reason` is the one definition of which items a case can take. Suggestions are computed on each request and never stored.
 
-## Donation form validation limits
+A match is made when a social worker requests an item for a case (`accept_match`), which moves it to `matched` and holds it for that case. The donor approves by connecting on WhatsApp (`connect`); they can also cancel the match, or find another match once connected. The social worker can release it. If the donor does not connect within 5 days the donation is withdrawn. The active match lives on the item (`activeMatch`) and the case's `fulfilment` field records which need it fills; there is no separate matches collection.
 
-`backend/app/validation.py` is the source of truth — it runs on every `POST /api/furniture`, `PATCH /api/furniture/:id` and `PATCH /api/donors/me`, so it can't be bypassed by calling the API directly. `frontend/src/modules/furniture/FurnitureForm.tsx` mirrors the same numbers so a donor gets an immediate, specific message (e.g. "Quantity must be a whole number between 1 and 20") instead of a round trip to the server to find out `-9999` isn't a valid number of washing machines.
+Once connected, the donor starts the delivery (`arrange_delivery`, status `to_deliver`) and sends a provider, a date and the pick-up and delivery addresses (`propose_logistics`). The social worker confirms (`confirm_logistics`, status `in_delivery`), asks for the details again (`rearrange_logistics`) or releases the item. Either side then marks the delivery complete (`complete_delivery`, status `delivered`) or calls it off (`cancel_delivery`), which returns the item to the pool. The proposal lives on the match (`activeMatch.logistics`); the beneficiary's address is kept in `furniture/{id}/private/contact` only while the delivery is being arranged. A delivered need moves from the case's `fulfilment` to its `delivered` field. No logistics provider is contacted: the choice is recorded and the donor books it themselves.
 
-| Field | Rule |
-|---|---|
-| Quantity | whole number, 1–20 |
-| Width / depth / height (cm) | whole number, 1–500 |
-| Floor | whole number, 0–150 |
-| Listing title | 3–120 characters |
-| Subcategory | up to 80 characters |
-| Condition note | 5–800 characters |
-| Photos | up to 5 |
-| Condition, fits-in-lift, disassembly, delivery area, deadline type | must be one of that field's allowed choices |
-| Contact name | up to 80 characters |
-| WhatsApp number | must match `+?[0-9()\- ]{7,20}` (optional leading `+`, digits, spaces/hyphens/parentheses) |
-
-The validator only checks fields that are actually present in the request body, so a donor's partial `PATCH` isn't forced to resend every field. Covered by `backend/tests/test_validation.py` (`python -m pytest backend/tests -q`).
-
-Two fields — "This item came from a home with pets" and "This item came from a smoking household" — are informational disclosures rather than constrained inputs: they're plain booleans with no format to validate, shown to the recipient/social worker on the listing's Safety section.
+Furniture status changes only through `backend/app/lifecycle.py`: the transition table says which role can move an item from which status, and `POST /api/furniture/:id/actions/:action` (with the `expected_status` the screen was showing) is the only way to run one. Each change writes the item, the case it is matched to, a `statusHistory` entry and a `notificationsOutbox` entry per person to tell, in one transaction. Pick-up addresses live in `furniture/{id}/private/contact`, never on the listing.

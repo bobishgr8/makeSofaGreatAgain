@@ -45,6 +45,7 @@ export default function App() {
           <NavLink to="/furniture">Furniture</NavLink>
           <NavLink to="/wishlist">Wishlist</NavLink>
           <NavLink to="/donate">Donate</NavLink>
+          <NavLink to="/donor">Your donations</NavLink>
           <NavLink to="/workspace">Social work</NavLink>
           <NavLink to="/admin">Admin</NavLink>
         </nav>

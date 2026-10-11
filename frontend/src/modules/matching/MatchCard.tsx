@@ -3,63 +3,54 @@ import { Link } from "react-router-dom";
 
 import Button from "../../common/components/Button";
 import Card from "../../common/components/Card";
-import FormField from "../../common/components/FormField";
-import { api } from "../../common/api";
-import type { Match } from "../../common/dto/MatchDTO";
+import { CONDITION_LABELS } from "../../common/dto/FurnitureDTO";
+import type { Suggestion } from "../../common/dto/MatchDTO";
+import { useFurnitureAction } from "../../common/hooks/useFurnitureAction";
 
 type Props = {
-  match: Match;
+  suggestion: Suggestion;
+  caseId: string;
   rank?: number;
-  // Shown for cross-case lists (e.g. "My reservations") where the case
-  // isn't already the page's context, unlike the per-case suggested list.
-  showCase?: boolean;
+  // False until the social worker has saved their organisation and WhatsApp number.
+  canRequest: boolean;
+  onRequested: () => void;
+  onFailed: (message: string) => void;
 };
 
-const MAX_NOTES_LENGTH = 1000;
+export default function MatchCard({
+  suggestion,
+  caseId,
+  rank,
+  canRequest,
+  onRequested,
+  onFailed,
+}: Props) {
+  const item = suggestion.furniture;
+  const { run, pending } = useFurnitureAction(item, onRequested);
 
-export default function MatchCard({ match, rank, showCase = false }: Props) {
-  const [current, setCurrent] = useState(match);
-  const [reserving, setReserving] = useState(false);
-  const [notes, setNotes] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const photo =
+    item.photos?.find((candidate) => candidate.isPrimary) ?? item.photos?.[0];
+  const size = item.dimensionsCm;
+  const dimensions =
+    size?.width != null && size?.depth != null && size?.height != null
+      ? `${size.width} × ${size.depth} × ${size.height} cm`
+      : null;
 
-  const isUnclaimed = !current.status || current.status === "suggested";
-
-  async function updateStatus(status: string, extra?: Record<string, unknown>) {
-    setSubmitting(true);
-    setError("");
-
-    try {
-      const updated = await api<Match>(`/api/matches/${current.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status, ...extra }),
-      });
-
-      setCurrent(updated);
-      setReserving(false);
-      setNotes("");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Couldn't update this reservation.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function submitReservation() {
-    if (!notes.trim()) {
-      setError("Add a note on how you'll contact the recipient.");
-      return;
-    }
-    void updateStatus("reserved", { notes });
+  async function request() {
+    const failure = await run("accept_match", { caseId });
+    if (failure) onFailed(failure);
   }
 
   return (
     <Card className="match-card">
+      {photo && (
+        <img
+          src={photo.url}
+          alt={item.title}
+          className="furniture-card-image"
+        />
+      )}
+
       <div className="match-card-header">
         <div>
           {rank && <span className="muted-text">Recommendation #{rank}</span>}
@@ -70,137 +61,70 @@ export default function MatchCard({ match, rank, showCase = false }: Props) {
             </span>
           )}
 
-          <h2>Furniture match</h2>
+          <h2>{item.title}</h2>
         </div>
 
-        <span className="status">{Math.round(current.score)}% fit</span>
+        <span className="status">
+          {Math.round(suggestion.score)}% fit
+        </span>
       </div>
+
+      <p className="muted-text">
+        {[
+          CONDITION_LABELS[item.condition] ?? item.condition,
+          item.location?.district,
+          dimensions,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
 
       <div className="match-score">
         <div
           className="match-score-fill"
           style={{
-            width: `${Math.min(Math.max(current.score, 0), 100)}%`,
+            width: `${Math.min(
+              Math.max(suggestion.score, 0),
+              100,
+            )}%`,
           }}
         />
       </div>
 
-      {current.reasons.length > 0 && (
+      {suggestion.reasons.length > 0 && (
         <div>
           <span className="muted-text">Why it matched</span>
 
           <ul className="match-reasons">
-            {current.reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
+            {suggestion.reasons.map((reason) => (
+              <li key={reason}>
+                {reason}
+              </li>
             ))}
           </ul>
         </div>
       )}
 
-      {!isUnclaimed && (
-        <div>
-          <span className="muted-text">Status</span>
-          <p>{formatLabel(current.status ?? "")}</p>
-        </div>
-      )}
-
-      {current.notes && (
-        <div>
-          <span className="muted-text">Contact plan</span>
-          <p>{current.notes}</p>
-        </div>
-      )}
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {isUnclaimed && reserving && (
-        <FormField label="How will you reach the recipient?">
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="e.g. Calling the family Tuesday to arrange pickup."
-            maxLength={MAX_NOTES_LENGTH}
-          />
-        </FormField>
-      )}
-
       <div className="actions">
-        {isUnclaimed && !reserving && (
-          <Button type="button" onClick={() => setReserving(true)}>
-            Reserve for this case
-          </Button>
-        )}
-
-        {isUnclaimed && reserving && (
-          <>
-            <Button
-              type="button"
-              disabled={submitting}
-              onClick={submitReservation}
-            >
-              {submitting ? "Reserving..." : "Confirm reservation"}
-            </Button>
-
-            <button
-              type="button"
-              className="button secondary"
-              onClick={() => {
-                setReserving(false);
-                setError("");
-              }}
-            >
-              Cancel
-            </button>
-          </>
-        )}
-
-        {current.status === "reserved" && (
-          <>
-            <Button
-              type="button"
-              disabled={submitting}
-              onClick={() => updateStatus("collected")}
-            >
-              Mark collected
-            </Button>
-
-            <Button
-              type="button"
-              className="secondary"
-              disabled={submitting}
-              onClick={() => updateStatus("delivered")}
-            >
-              Mark delivered
-            </Button>
-          </>
-        )}
-
-        {current.status === "collected" && (
+        {/* The button comes from the server's allowedActions. */}
+        {item.allowedActions.includes("accept_match") && (
           <Button
             type="button"
-            disabled={submitting}
-            onClick={() => updateStatus("delivered")}
+            disabled={pending || !canRequest}
+            title={canRequest ? undefined : "Save your organisation and WhatsApp number first"}
+            onClick={request}
           >
-            Mark delivered
+            {pending ? "Requesting..." : "Request this item"}
           </Button>
         )}
 
-        <Link className="button secondary" to={`/furniture/${current.furnitureId}`}>
+        <Link
+          className="button secondary"
+          to={`/furniture/${item.id}`}
+        >
           Review furniture
         </Link>
       </div>
     </Card>
   );
-}
-
-function formatLabel(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase(),
-    );
 }

@@ -10,6 +10,7 @@ from .auth import auth_bp
 from .cases import cases_bp
 from .donors import donors_bp
 from .furniture import furniture_bp
+from .internal import internal_bp
 from .matching import matching_bp
 from .social_workers import social_workers_bp
 
@@ -22,6 +23,7 @@ def create_app(test_config=None):
         WEB_ORIGIN=os.getenv("WEB_ORIGIN", "http://localhost:3000"),
         WHATSAPP_BOT_URL=os.getenv("WHATSAPP_BOT_URL"),
         WHATSAPP_BOT_SECRET=os.getenv("WHATSAPP_BOT_SECRET"),
+        INTERNAL_SCHEDULER_TOKEN=os.getenv("INTERNAL_SCHEDULER_TOKEN"),
     )
 
     if test_config:
@@ -58,6 +60,7 @@ def create_app(test_config=None):
     app.register_blueprint(furniture_bp)
     app.register_blueprint(cases_bp)
     app.register_blueprint(matching_bp)
+    app.register_blueprint(internal_bp)
 
     # Server-side configuration endpoint
     from .config import config_bp

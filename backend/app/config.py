@@ -36,16 +36,42 @@ FORM_FIELD_KEYS = {
 
 FORM_FIELDS_DOC = ("platformConfig", "formFields")
 
-CATEGORY_LABELS = {
-    "sofa": "sofa",
-    "table": "table",
-    "chair": "chair",
-    "bed": "bed",
-    "storage": "storage unit",
-    "washing_machine": "washing machine",
-    "fridge": "fridge",
-    "other": "furniture item",
-}
+# Each one needs a region in scoring.NEIGHBOURHOOD_REGIONS.
+NEIGHBOURHOODS = [
+    "Ang Mo Kio",
+    "Bedok",
+    "Bishan",
+    "Bukit Batok",
+    "Bukit Merah",
+    "Bukit Panjang",
+    "Bukit Timah",
+    "Choa Chu Kang",
+    "Clementi",
+    "Geylang",
+    "Hougang",
+    "Jurong East",
+    "Jurong West",
+    "Kallang",
+    "Marine Parade",
+    "Pasir Ris",
+    "Punggol",
+    "Queenstown",
+    "Sembawang",
+    "Sengkang",
+    "Serangoon",
+    "Tampines",
+    "Toa Payoh",
+    "Woodlands",
+    "Yishun",
+]
+
+# Indicative only: we do not call the providers' APIs, and the ranges exclude
+# manpower (carrying, dismantling).
+LOGISTICS_ESTIMATES = [
+    {"provider": "Ninja Van", "priceRange": "S$38 – S$50", "timing": "1–3 working days"},
+    {"provider": "Lalamove", "priceRange": "S$45 – S$60", "timing": "Same day / Next day"},
+    {"provider": "GoGoVan", "priceRange": "S$50 – S$70", "timing": "1–3 working days"},
+]
 
 
 def default_form_fields():
@@ -69,35 +95,14 @@ def get_form_fields():
 @config_bp.get("")
 def get_config():
     # Server-authoritative UI configuration and sensible defaults.
-    category_labels = CATEGORY_LABELS
-
-    neighbourhoods = [
-        "Ang Mo Kio",
-        "Bedok",
-        "Bishan",
-        "Bukit Batok",
-        "Bukit Merah",
-        "Bukit Panjang",
-        "Bukit Timah",
-        "Choa Chu Kang",
-        "Clementi",
-        "Geylang",
-        "Hougang",
-        "Jurong East",
-        "Jurong West",
-        "Kallang",
-        "Marine Parade",
-        "Pasir Ris",
-        "Punggol",
-        "Queenstown",
-        "Sembawang",
-        "Sengkang",
-        "Serangoon",
-        "Tampines",
-        "Toa Payoh",
-        "Woodlands",
-        "Yishun",
-    ]
+    category_labels = {
+        "sofa": "sofa",
+        "table": "table",
+        "chair": "chair",
+        "bed": "bed",
+        "storage": "storage unit",
+        "other": "furniture item",
+    }
 
     initial_draft = {
         "title": "",
@@ -110,6 +115,8 @@ def get_config():
         "depthCm": "",
         "heightCm": "",
         "neighbourhood": "",
+        "pickupAddress": "",
+        "expectedDeliveryDate": "",
         "floor": "",
         "hasLift": "",
         "fitsInLift": "",
@@ -129,9 +136,10 @@ def get_config():
 
     return jsonify({
         "categoryLabels": category_labels,
-        "neighbourhoods": neighbourhoods,
+        "neighbourhoods": NEIGHBOURHOODS,
         "initialDraft": initial_draft,
         "formFields": get_form_fields(),
+        "logisticsEstimates": LOGISTICS_ESTIMATES,
     })
 
 

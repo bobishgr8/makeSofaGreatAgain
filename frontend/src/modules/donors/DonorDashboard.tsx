@@ -1,18 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import Card from "../../common/components/Card";
+import StatusBadge from "../../common/components/StatusBadge";
 import { api } from "../../common/api";
+import { formatDate } from "../../common/dates";
 import { useAuth } from "../../app/AuthProvider";
 import {
-  FURNITURE_STATUS_LABELS,
-  type Furniture,
+  CONDITION_LABELS,
+  DONOR_STAGES,
+  STAGE_LABELS,
+  type MyFurnitureResponse,
 } from "../../common/dto/FurnitureDTO";
+import { primaryPhoto } from "./useDonorFurniture";
+import "./DonorFurniture.css";
 
 export default function DonorDashboard() {
   const { user } = useAuth();
 
-  const [donations, setDonations] = useState<Furniture[]>([]);
+  const [data, setData] = useState<MyFurnitureResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -26,10 +32,7 @@ export default function DonorDashboard() {
       try {
         setLoading(true);
         setError("");
-
-        const items = await api<Furniture[]>("/api/furniture/mine");
-
-        setDonations(items);
+        setData(await api<MyFurnitureResponse>("/api/furniture/mine"));
       } catch (err) {
         console.error("Could not load donor donations:", err);
         setError("We could not load your donations.");
@@ -41,23 +44,7 @@ export default function DonorDashboard() {
     loadDonations();
   }, [user]);
 
-  const activeDonations = useMemo(
-    () =>
-      donations.filter((item) =>
-        ["pending_review", "available", "matched"].includes(item.status),
-      ).length,
-    [donations],
-  );
-
-  const completedDonations = useMemo(
-    () => donations.filter((item) => item.status === "collected").length,
-    [donations],
-  );
-
-  const matchedDonations = useMemo(
-    () => donations.filter((item) => item.status === "matched").length,
-    [donations],
-  );
+  const donations = data?.items ?? [];
 
   return (
     <main className="page">
@@ -75,30 +62,13 @@ export default function DonorDashboard() {
         </Link>
       </div>
 
-      <div className="grid">
-        <Card className="metric">
-          <span>Active donations</span>
-          <strong>{activeDonations}</strong>
-          <small>Items currently in the donation process.</small>
-        </Card>
-
-        <Card className="metric">
-          <span>Matched</span>
-          <strong>{matchedDonations}</strong>
-          <small>Items matched with a recipient.</small>
-        </Card>
-
-        <Card className="metric">
-          <span>Completed</span>
-          <strong>{completedDonations}</strong>
-          <small>Items successfully donated.</small>
-        </Card>
-
-        <Card className="metric">
-          <span>Total donations</span>
-          <strong>{donations.length}</strong>
-          <small>Everything you have submitted.</small>
-        </Card>
+      <div className="stage-counters">
+        {DONOR_STAGES.map((stage) => (
+          <div className="stage-counter" key={stage}>
+            <strong>{data?.counts[stage] ?? 0}</strong>
+            <span>{STAGE_LABELS[stage]}</span>
+          </div>
+        ))}
       </div>
 
       <section>
@@ -127,44 +97,35 @@ export default function DonorDashboard() {
         )}
 
         {!loading && !error && donations.length > 0 && (
-          <div className="grid">
+          <div className="donation-rows">
             {donations.map((donation) => {
-              const primaryPhoto =
-                donation.photos?.find((photo) => photo.isPrimary) ??
-                donation.photos?.[0];
+              const photo = primaryPhoto(donation);
 
               return (
-                <Card key={donation.id}>
-                  {primaryPhoto && (
-                    <img
-                      src={primaryPhoto.url}
-                      alt={donation.title}
-                      className="donation-image"
-                    />
+                <Link
+                  key={donation.id}
+                  className="donation-row"
+                  to={`/donor/furniture/${donation.id}`}
+                >
+                  {photo ? (
+                    <img src={photo.url} alt="" />
+                  ) : (
+                    <div className="donation-row-photo" />
                   )}
 
                   <div>
-                    <small>
-                      {donation.category ?? "Furniture"}
-                    </small>
-
                     <h3>{donation.title}</h3>
-
-                    <p>
-                      Status:{" "}
-                      <strong>
-                        {FURNITURE_STATUS_LABELS[donation.status]}
-                      </strong>
-                    </p>
-
-                    {donation.createdAt && (
-                      <small>
-                        Submitted{" "}
-                        {new Date(donation.createdAt).toLocaleDateString()}
-                      </small>
+                    <p>{CONDITION_LABELS[donation.condition] ?? donation.condition}</p>
+                    {donation.private?.pickupAddress && (
+                      <p>Pick up: {donation.private.pickupAddress}</p>
+                    )}
+                    {donation.expectedDeliveryDate && (
+                      <p>Deliver by {formatDate(donation.expectedDeliveryDate)}</p>
                     )}
                   </div>
-                </Card>
+
+                  <StatusBadge stage={donation.donorStage} />
+                </Link>
               );
             })}
           </div>

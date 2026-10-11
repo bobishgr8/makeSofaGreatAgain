@@ -9,6 +9,9 @@ import UnauthorizedPage from "../common/components/UnauthorisedPage";
 
 import DonorDashboard from "../modules/donors/DonorDashboard";
 import DonationPage from "../modules/donors/DonationPage";
+import FurnitureDetail from "../modules/donors/FurnitureDetail";
+import CancelView from "../modules/donors/CancelView";
+import EditDetails from "../modules/donors/EditDetails";
 
 import SocialWorkerDashboard from "../modules/socialWorkers/SocialWorkerDashboard";
 import CaseForm from "../modules/socialWorkers/CaseForm";
@@ -64,6 +67,33 @@ export function AppRouter() {
         element={
           <ProtectedRoute roles={["donor", "admin"]}>
             <DonorDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/donor/furniture/:id"
+        element={
+          <ProtectedRoute roles={["donor", "admin"]}>
+            <FurnitureDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/donor/furniture/:id/cancel"
+        element={
+          <ProtectedRoute roles={["donor"]}>
+            <CancelView />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/donor/furniture/:id/edit"
+        element={
+          <ProtectedRoute roles={["donor"]}>
+            <EditDetails />
           </ProtectedRoute>
         }
       />
