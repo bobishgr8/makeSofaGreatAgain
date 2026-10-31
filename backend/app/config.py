@@ -34,7 +34,7 @@ FORM_FIELD_KEYS = {
 
 FORM_FIELDS_DOC = ("platformConfig", "formFields")
 
-# Each one needs a region in scoring.NEIGHBOURHOOD_REGIONS.
+# Each one needs a centre in scoring.NEIGHBOURHOOD_CENTROIDS.
 NEIGHBOURHOODS = [
     "Ang Mo Kio",
     "Bedok",
