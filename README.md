@@ -84,7 +84,7 @@ GET                /api/matches
 GET                /api/matches/suggestions?caseId=
 ```
 
-Matching ranks the available furniture for one case on what drives logistics cost: proximity (same neighbourhood, then same region), dimensions (the item must fit the space the case describes) and urgency (days left before the donor's delivery date). `backend/app/scoring.py` holds the score; `lifecycle.ineligible_reason` is the one definition of which items a case can take. Suggestions are computed on each request and never stored.
+Matching ranks the available furniture for one case on what drives logistics cost: lift access (yes/no at pickup and at delivery), proximity (km between neighbourhood centres), dimensions (the item must fit the space the case describes) and urgency (days left before the donor's delivery date). Weights depend on the item: the bulkier it is (by category and size), the more lift access counts and the less distance does. `backend/app/scoring.py` holds the score; `lifecycle.ineligible_reason` is the one definition of which items a case can take. Suggestions are computed on each request and never stored.
 
 A match is made when a social worker requests an item for a case (`accept_match`), which moves it to `matched` and holds it for that case. The donor approves by connecting on WhatsApp (`connect`); they can also cancel the match, or find another match once connected. The social worker can release it. If the donor does not connect within 5 days the donation is withdrawn. The active match lives on the item (`activeMatch`) and the case's `fulfilment` field records which need it fills; there is no separate matches collection.
 

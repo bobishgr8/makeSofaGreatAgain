@@ -201,6 +201,10 @@ export default function CaseForm() {
                 name="hasLift"
                 required
               >
+                <option value="">
+                  Choose one
+                </option>
+
                 <option value="yes">
                   Yes
                 </option>

@@ -7,5 +7,7 @@ export type Suggestion = {
   furniture: FurnitureView;
   score: number;
   scoreBreakdown: Record<string, number>;
+  // Points available per component for this item; lift access counts for more on bulky items.
+  weights?: Record<string, number>;
   reasons: string[];
 };
