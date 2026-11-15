@@ -210,7 +210,6 @@ class AcceptMatchTests(unittest.TestCase):
         self.assert_refused(400, context=ctx(case=case(needs=[{"category": "bed"}])))
         self.assert_refused(400, context=ctx(case=case(fulfilment={"sofa": "item-9"})))
         self.assert_refused(400, listing=item("available", declinedCaseIds=["case-1"]))
-        self.assert_refused(400, listing=item("available", expectedDeliveryDate="2024-09-14"))
         self.assert_refused(
             400,
             listing=item("available", dimensionsCm={"width": 200, "depth": 90, "height": 80}),
@@ -222,6 +221,19 @@ class AcceptMatchTests(unittest.TestCase):
 
     def test_ineligible_reason_is_none_for_a_good_pair(self):
         self.assertIsNone(lifecycle.ineligible_reason(item("available"), case(), date(2024, 9, 12)))
+
+    def test_delivery_date_does_not_block_a_match(self):
+        today = date(2024, 9, 12)
+        for delivery in ("2024-09-13", "2024-09-12", "2024-09-01"):
+            self.assertIsNone(
+                lifecycle.ineligible_reason(item("available", expectedDeliveryDate=delivery), case(), today)
+            )
+
+    def test_only_the_requested_category_matches(self):
+        reason = lifecycle.ineligible_reason(
+            item("available", category="table"), case(needs=[{"category": "chair"}]), date(2024, 9, 12)
+        )
+        self.assertEqual(reason, "This case does not need this kind of furniture")
 
 
 class MatchedTests(unittest.TestCase):
@@ -624,32 +636,6 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(lifecycle.donor_stage(item("withdrawn")), "cancelled")
         self.assertEqual(lifecycle.donor_stage(item("collected")), "delivered")
         self.assertEqual(set(lifecycle.DONOR_STAGE), set(lifecycle.STATUSES))
-
-
-class ExpiryTests(unittest.TestCase):
-    def test_expires_three_days_before_delivery(self):
-        listing = item("available", expectedDeliveryDate="2024-09-18")
-        self.assertFalse(lifecycle.is_expired(listing, date(2024, 9, 14)))
-        self.assertTrue(lifecycle.is_expired(listing, date(2024, 9, 15)))
-        self.assertTrue(lifecycle.is_expired(listing, date(2024, 9, 16)))
-
-    def test_only_available_items_with_a_date_expire(self):
-        today = date(2024, 9, 20)
-        self.assertFalse(lifecycle.is_expired(item("pending_review", expectedDeliveryDate="2024-09-18"), today))
-        self.assertFalse(lifecycle.is_expired(item("available", expectedDeliveryDate=None), today))
-        self.assertFalse(lifecycle.is_expired(item("available", expectedDeliveryDate="soon"), today))
-
-    def test_system_expiry_withdraws_with_no_match_reason(self):
-        decision = lifecycle.decide(
-            item("available"),
-            "expire",
-            lifecycle.SYSTEM_USER,
-            {"expected_status": "available", "reason": lifecycle.NO_MATCH_REASON},
-            NOW,
-        )
-        self.assertEqual(decision.item_updates["status"], "withdrawn")
-        self.assertEqual(decision.item_updates["cancelReason"], "no_match")
-        self.assertEqual(decision.item_updates["cancelledBy"], "system")
 
 
 if __name__ == "__main__":

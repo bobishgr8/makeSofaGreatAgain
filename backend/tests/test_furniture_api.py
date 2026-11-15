@@ -231,31 +231,28 @@ class FurnitureApiTests(unittest.TestCase):
         self.assertEqual(mine["donorStage"], "cancelled")
         self.assertEqual(mine["cancelReason"], "Unsafe")
 
-    # ---------- expiry ----------
+    # ---------- delivery date ----------
 
-    def test_expiry_withdraws_unmatched_items(self):
-        from app import lifecycle
+    def test_items_near_or_past_their_date_stay_available(self):
         from app.validation import today_sgt
 
-        soon = self.create(expectedDeliveryDate=(today_sgt() + timedelta(days=2)).isoformat())
-        later = self.create()
-        for item in (soon, later):
-            self.act(item["id"], "approve", self.as_user("admin-1", "admin"), "pending_review")
-
-        expired = lifecycle.expire_stale(self.db, today_sgt())
-        self.assertEqual(expired, [soon["id"]])
+        self.app.config["INTERNAL_SCHEDULER_TOKEN"] = "secret"
+        try:
+            soon = self.create(expectedDeliveryDate=today_sgt().isoformat())
+            self.act(soon["id"], "approve", self.as_user("admin-1", "admin"), "pending_review")
+            ok = self.client.post("/api/internal/expire", headers={"X-Internal-Token": "secret"})
+            self.assertEqual(json.loads(ok.data), {"lapsed": []})
+        finally:
+            self.app.config["INTERNAL_SCHEDULER_TOKEN"] = None
         stored = self.db.collection("furniture").document(soon["id"]).get().to_dict()
-        self.assertEqual(stored["status"], "withdrawn")
-        self.assertEqual(stored["cancelReason"], "no_match")
-        outbox = [d.to_dict()["type"] for d in self.db.collection("notificationsOutbox").stream()]
-        self.assertIn("expire", outbox)
+        self.assertEqual(stored["status"], "available")
 
     def test_internal_expire_endpoint_needs_token(self):
         self.app.config["INTERNAL_SCHEDULER_TOKEN"] = "secret"
         try:
             self.assertEqual(self.client.post("/api/internal/expire").status_code, 401)
             ok = self.client.post("/api/internal/expire", headers={"X-Internal-Token": "secret"})
-            self.assertEqual(json.loads(ok.data), {"expired": [], "lapsed": []})
+            self.assertEqual(json.loads(ok.data), {"lapsed": []})
         finally:
             self.app.config["INTERNAL_SCHEDULER_TOKEN"] = None
 
@@ -397,21 +394,27 @@ class FurnitureApiTests(unittest.TestCase):
         near = self.available(title="Near")
         far = self.available(title="Far", location={"city": "ReFurbish", "district": "Jurong West"})
         self.available(title="Too big", dimensionsCm={"height": 250, "width": 60, "depth": 55})
-        self.available(title="Chair", category="chair")
+        chair = self.available(title="Chair", category="chair")
         case = self.create_case(
             self.sw(),
             needs=[{"category": "storage", "maxDimensionsCm": {"width": 100, "depth": 100, "height": 200}}],
         )
 
         ranked = self.suggestions(case["id"], self.sw())
-        self.assertEqual([s["furniture"]["id"] for s in ranked], [near["id"], far["id"]])
+        ids = [s["furniture"]["id"] for s in ranked]
+        # "Too big" does not fit the storage space, and a chair is not storage.
+        self.assertEqual(ids, [near["id"], far["id"]])
+        self.assertNotIn(chair["id"], ids)
         self.assertEqual(ranked[0]["furniture"]["allowedActions"], ["accept_match"])
         self.assertIn("Same neighbourhood", ranked[0]["reasons"])
         self.assertNotIn("88 Tampines Road", json.dumps(ranked))
         self.assertEqual(self.db.collection("matches").get(), [])
 
-        other = self.client.get(f"/api/matches/suggestions?caseId={case['id']}", headers=self.sw("sw-2"))
-        self.assertEqual(other.status_code, 404)
+        # Any signed-in social worker can see suggestions; requesting still checks
+        # approval and case ownership.
+        self.assertEqual(len(self.suggestions(case["id"], self.sw("sw-2"))), 2)
+        pending = {**self.sw(), "X-Demo-Approval": "pending"}
+        self.assertEqual(len(self.suggestions(case["id"], pending)), 2)
 
     def test_connect_then_find_another_match(self):
         item, case = self.matched()
@@ -438,7 +441,7 @@ class FurnitureApiTests(unittest.TestCase):
         again = self.request_item(item["id"], case["id"], self.sw())
         self.assertEqual(again.status_code, 400)
 
-    def test_release_returns_the_item_and_expires_it_when_too_late(self):
+    def test_release_returns_the_item_even_after_its_date(self):
         item, case = self.matched()
         self.assertEqual(self.act(item["id"], "release_match", self.sw(), "matched").status_code, 400)
         self.db.collection("furniture").document(item["id"]).update(
@@ -449,8 +452,7 @@ class FurnitureApiTests(unittest.TestCase):
         self.assertEqual(self.stored_case(case["id"])["fulfilment"], {})
 
         donor = self.client.get(f"/api/furniture/{item['id']}", headers=self.owner()).get_json()
-        self.assertEqual(donor["status"], "withdrawn")
-        self.assertEqual(donor["cancelKind"], "no_match")
+        self.assertEqual(donor["status"], "available")
 
     def test_cancel_match_withdraws_and_frees_the_case(self):
         item, case = self.matched()
