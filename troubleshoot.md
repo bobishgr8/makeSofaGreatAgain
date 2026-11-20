@@ -25,3 +25,9 @@
 - Symptom: a script outside `backend/` calling `create_app()` raised `ValueError: Invalid certificate argument: "None"`.
 - Cause: `load_dotenv()` searches from the script's own folder, so `FIREBASE_SERVICE_ACCOUNT` from `backend/.env` was never loaded.
 - Fix: run the script from `backend/` and call `load_dotenv(os.path.join(os.getcwd(), ".env"))`.
+
+## 2026-11-21: backend would not start, frontend build failed
+- Symptom: every backend import failed with `ImportError: cannot import name 'validate_donor_profile'` (then `CATEGORY_LABELS`); 4 test modules could not load; `npm run build` had 23 TypeScript errors (`AdminTab`, `RoleFilter`, `furnitureSearch`, `showCase`, `Match` not found; `delivered` listed twice in `FurnitureDTO.ts`).
+- Cause: the 2026-10-11 merge `7e4a565` kept one side's callers (`donors.py`, `whatsapp.py`, `AdminDashboard.tsx`, the old reservation card in `MatchList.tsx`) but the other side's definitions (`validation.py`, `config.py`, `FurnitureDTO.ts`, `MatchCard.tsx`). Server-side donation-form validation was silently dropped with it.
+- Fix: restored `validate_furniture` / `validate_donor_profile` (blank values now count as "not given", since admins can switch form fields off) and `CATEGORY_LABELS` from `897aed6`; create validates in the route, edit validates in `lifecycle.plan_edit` after the ownership/status checks; restored the admin filter declarations; removed the dead "My reservations" tab (it filtered on statuses that no longer exist).
+- Check after any merge: `python -m unittest discover -s backend/tests` and `cd frontend && npm run build` must both pass. Neither is run automatically.

@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 from firebase_admin import firestore
 
 from .scoring import category_key, fits, need_for
-from .validation import SINGAPORE, clean_text, parse_delivery_date
+from .validation import SINGAPORE, clean_text, parse_delivery_date, validate_furniture
 
 COLLECTION = "furniture"
 HISTORY = "statusHistory"
@@ -75,6 +75,8 @@ TRANSITIONS = {
     ("pending_review", "approve"): Transition("available", {"admin"}, False),
     ("pending_review", "reject"): Transition("rejected", {"admin"}, True),
     ("available", "flag_for_review"): Transition("pending_review", {"admin"}, False),
+    # Admin override (EPIC 14): take a live listing down, with a reason.
+    ("available", "withdraw_listing"): Transition("withdrawn", {"admin"}, True),
     ("pending_review", "cancel_request"): Transition("withdrawn", {"donor"}, True),
     ("available", "cancel_request"): Transition("withdrawn", {"donor"}, True),
     # State 2. A social worker's request holds the item for their case; the
@@ -100,8 +102,23 @@ TRANSITIONS = {
     ),
 }
 
-# Actions whose actor is not yet a party to the item.
-OPEN_ACTIONS = {"accept_match"}
+# The waitlist (Figma flow): while an item is held for one case, other social
+# workers can queue for it. When it comes back to the pool the first eligible
+# entry is matched (settle_waitlist); if it is withdrawn or delivered, the
+# waitlist closes. The status does not change.
+for _status in ACTIVE_MATCH_STATUSES:
+    TRANSITIONS[(_status, "join_waitlist")] = Transition(_status, {"social_worker"}, False)
+    TRANSITIONS[(_status, "leave_waitlist")] = Transition(_status, {"social_worker"}, False)
+
+MAX_WAITLIST = 10
+WAITLIST_DAYS = 30
+
+# Actions whose actor is not yet a party to the item, and the statuses they apply to.
+OPEN_ACTIONS = {
+    "accept_match": {"available"},
+    "join_waitlist": set(ACTIVE_MATCH_STATUSES),
+    "leave_waitlist": set(ACTIVE_MATCH_STATUSES),
+}
 
 # What a signed-in person can be offered. Mirrored by FURNITURE_ACTIONS in
 # frontend/src/common/dto/FurnitureDTO.ts (checked by test_type_sync.py).
@@ -140,6 +157,9 @@ PUBLIC_FIELDS = (
     "title",
     "category",
     "subcategory",
+    "brand",
+    "modelNumber",
+    "details",
     "description",
     "condition",
     "conditionNotes",
@@ -156,6 +176,7 @@ PUBLIC_FIELDS = (
 # Extra fields for the donor who owns the item and for admins.
 PARTY_FIELDS = (
     "expectedDeliveryDate",
+    "thankYouSentAt",
     "cancelReason",
     "statusChangedAt",
     "updatedAt",
@@ -191,16 +212,55 @@ def has_proposal(item):
     return bool(proposal(item))
 
 
+def waitlist(item):
+    return (item or {}).get("waitlist") or []
+
+
+def waitlist_position(item, uid):
+    """1-based place of this social worker's first entry, or None."""
+    for index, entry in enumerate(waitlist(item)):
+        if entry.get("socialWorkerId") == uid:
+            return index + 1
+    return None
+
+
+def _waitlist_updates(entries):
+    """Item fields for a new waitlist. waitlistUids is for array-contains queries,
+    waitlistOpen for the background jobs."""
+    return {
+        "waitlist": entries,
+        "waitlistUids": sorted({entry.get("socialWorkerId") for entry in entries if entry.get("socialWorkerId")}),
+        "waitlistOpen": bool(entries),
+    }
+
+
+def is_owner(user, item):
+    """Whoever submitted the item is its donor, whatever their account role: an
+    admin or social worker who lists furniture runs the donor's steps for it."""
+    return bool(user and item and user.get("uid") and item.get("donorId") == user.get("uid"))
+
+
+def acting_roles(user, item):
+    """The lifecycle roles this user holds for this item."""
+    if not user:
+        return set()
+    role = user.get("role")
+    roles = {role} if role in ("admin", "system") else set()
+    if is_owner(user, item):
+        roles.add("donor")
+    elif role in ("donor", "social_worker"):
+        roles.add(role)
+    return roles
+
+
 def is_party(user, item):
     if not user or not item:
         return False
     role, uid = user.get("role"), user.get("uid")
-    if role in ("admin", "system"):
+    if role in ("admin", "system") or is_owner(user, item):
         return True
     if not uid:
         return False
-    if role == "donor":
-        return item.get("donorId") == uid
     return role == "social_worker" and active_match(item).get("socialWorkerId") == uid
 
 
@@ -212,9 +272,8 @@ def _may_act(user, item, action):
     return bool(
         user
         and item
-        and action in OPEN_ACTIONS
         and user.get("role") == "social_worker"
-        and item.get("status") == "available"
+        and item.get("status") in OPEN_ACTIONS.get(action, ())
     )
 
 
@@ -222,6 +281,16 @@ def _offered(action, item, user):
     """Rules that need only the item, so a button is never shown in vain."""
     if action == "accept_match":
         return user.get("approval") == "approved" and item.get("donorId") != user.get("uid")
+    if action == "join_waitlist":
+        return (
+            user.get("approval") == "approved"
+            and item.get("donorId") != user.get("uid")
+            and active_match(item).get("socialWorkerId") != user.get("uid")
+            and waitlist_position(item, user.get("uid")) is None
+            and len(waitlist(item)) < MAX_WAITLIST
+        )
+    if action == "leave_waitlist":
+        return waitlist_position(item, user.get("uid")) is not None
     if action == "connect":
         return not is_connected(item)
     if action == "rematch":
@@ -239,27 +308,28 @@ def _offered(action, item, user):
 def allowed_actions(item, user):
     if not user or not item:
         return []
-    role = user.get("role")
+    roles = acting_roles(user, item)
     actions = [
         action
         for (from_status, action), rule in TRANSITIONS.items()
         if from_status == item.get("status")
-        and role in rule.roles
+        and roles & rule.roles
         and _may_act(user, item, action)
         and _offered(action, item, user)
     ]
-    if role == "donor" and is_party(user, item) and item.get("status") in EDITABLE_STATUSES:
+    if is_owner(user, item) and item.get("status") in EDITABLE_STATUSES:
         actions.append("edit")
     return actions
 
 
-def ineligible_reason(item, case, today: date):
+def ineligible_reason(item, case, today: date, ignore_status=False):
     """Why this item cannot be matched to this case, or None when it can.
 
-    The one definition of eligibility: the suggestion list and the request
-    guard both use it.
+    The one definition of eligibility: the suggestion list, the request guard
+    and the waitlist all use it. ``ignore_status`` asks whether the case could
+    take the item once it is free again (for the waitlist).
     """
-    if item.get("status") != "available":
+    if not ignore_status and item.get("status") != "available":
         return "This item is no longer available"
     if (case.get("status") or "open") != "open":
         return "This case is closed"
@@ -301,6 +371,33 @@ def _guard_accept_match(item, user, payload, ctx, now):
     message = ineligible_reason(item, case, now.astimezone(SINGAPORE).date())
     if message:
         raise LifecycleError(400, message)
+
+
+def _guard_join_waitlist(item, user, payload, ctx, now):
+    if user.get("approval") != "approved":
+        raise LifecycleError(403, "Your social worker account is awaiting admin approval")
+    if is_owner(user, item):
+        raise LifecycleError(403, "You cannot request your own donation")
+    case = ctx.get("case")
+    if not case or case.get("socialWorkerId") != user.get("uid"):
+        raise LifecycleError(404, "Case not found")
+    profile = ctx.get("profile") or {}
+    if not profile.get("organisation") or not profile.get("whatsapp"):
+        raise LifecycleError(400, "Add your organisation and WhatsApp number first")
+    if active_match(item).get("caseId") == case["id"]:
+        raise LifecycleError(409, "This item is already matched to this case")
+    if any(entry.get("caseId") == case["id"] for entry in waitlist(item)):
+        raise LifecycleError(409, "This case is already on the waitlist", current_status=item.get("status"))
+    if len(waitlist(item)) >= MAX_WAITLIST:
+        raise LifecycleError(409, "The waitlist for this item is full")
+    message = ineligible_reason(item, case, now.astimezone(SINGAPORE).date(), ignore_status=True)
+    if message:
+        raise LifecycleError(400, message)
+
+
+def _guard_leave_waitlist(item, user, payload, ctx, now):
+    if waitlist_position(item, user.get("uid")) is None:
+        raise LifecycleError(409, "You are not on the waitlist", current_status=item.get("status"))
 
 
 def _guard_connect(item, user, payload, ctx, now):
@@ -366,6 +463,8 @@ def _guard_needs_proposal(item, user, payload, ctx, now):
 
 GUARDS = {
     "accept_match": _guard_accept_match,
+    "join_waitlist": _guard_join_waitlist,
+    "leave_waitlist": _guard_leave_waitlist,
     "connect": _guard_connect,
     "rematch": _guard_rematch,
     "lapse_match": _guard_lapse_match,
@@ -444,13 +543,31 @@ def _effect_accept_match(item, user, payload, ctx, now):
         "connectedAt": None,
     }
     fulfilment = {**(case.get("fulfilment") or {}), category_key(item): item["id"]}
+    # A case matched from the waitlist leaves it.
+    remaining = [entry for entry in waitlist(item) if entry.get("caseId") != case["id"]]
     return (
-        {"activeMatch": match},
+        {"activeMatch": match, **_waitlist_updates(remaining)},
         {"fulfilment": fulfilment},
         [item.get("donorId")],
         {"caseId": case["id"]},
         None,
     )
+
+
+def _effect_join_waitlist(item, user, payload, ctx, now):
+    case = ctx["case"]
+    entry = {
+        "caseId": case["id"],
+        "socialWorkerId": user["uid"],
+        "organisation": ctx["profile"]["organisation"],
+        "requestedAt": now,
+    }
+    return _waitlist_updates([*waitlist(item), entry]), None, [], {"caseId": case["id"]}, None
+
+
+def _effect_leave_waitlist(item, user, payload, ctx, now):
+    remaining = [entry for entry in waitlist(item) if entry.get("socialWorkerId") != user.get("uid")]
+    return _waitlist_updates(remaining), None, [], {}, None
 
 
 def _effect_connect(item, user, payload, ctx, now):
@@ -521,6 +638,8 @@ def _effect_complete_delivery(item, user, payload, ctx, now):
 
 EFFECTS = {
     "accept_match": _effect_accept_match,
+    "join_waitlist": _effect_join_waitlist,
+    "leave_waitlist": _effect_leave_waitlist,
     "connect": _effect_connect,
     "rematch": _effect_back_to_pool,
     "release_match": _effect_back_to_pool,
@@ -556,7 +675,7 @@ def decide(item, action, user, payload, now, ctx=None):
         )
 
     rule = TRANSITIONS.get((current, action))
-    if rule is None or user.get("role") not in rule.roles:
+    if rule is None or not acting_roles(user, item) & rule.roles:
         raise LifecycleError(403, "This action is not available")
 
     try:
@@ -593,7 +712,7 @@ def decide(item, action, user, payload, now, ctx=None):
 
 def plan_edit(item, user, changes, now):
     """Check a donor's edit. Returns (item_updates, history_entry_or_None)."""
-    if not item or user.get("role") != "donor" or item.get("donorId") != user.get("uid"):
+    if not item or not is_owner(user, item):
         raise LifecycleError(404, "Furniture not found")
 
     current = item.get("status")
@@ -603,6 +722,9 @@ def plan_edit(item, user, changes, now):
             "This donation can no longer be edited",
             current_status=current,
         )
+    errors = validate_furniture(changes)
+    if errors:
+        raise LifecycleError(400, "; ".join(errors))
 
     updates = {**changes, "updatedAt": now}
     content_changed = any(
@@ -630,13 +752,14 @@ def history_entry(from_status, to_status, action, user, now, reason=None, **extr
     }
 
 
-def outbox_entry(kind, furniture_id, to_uid, now):
+def outbox_entry(kind, furniture_id, to_uid, now, **extra):
     return {
         "type": kind,
         "furnitureId": furniture_id,
         "toUid": to_uid,
         "createdAt": now,
         "sentAt": None,
+        **extra,
     }
 
 
@@ -648,7 +771,11 @@ def cancel_kind(item):
     """Why a cancelled item was cancelled, so the client need not read the free-text reason."""
     if item.get("status") == "rejected":
         return "rejected"
-    if item.get("cancelledBy") != SYSTEM_USER["uid"]:
+    cancelled_by = item.get("cancelledBy")
+    if cancelled_by != SYSTEM_USER["uid"]:
+        # An admin taking a listing down (withdraw_listing) is not the donor's doing.
+        if cancelled_by and item.get("donorId") and cancelled_by != item.get("donorId"):
+            return "removed"
         return "donor"
     return NO_CONNECT_REASON if item.get("cancelReason") == NO_CONNECT_REASON else NO_MATCH_REASON
 
@@ -668,7 +795,7 @@ def match_summary(item, user, contact, now):
     }
     if has_proposal(item):
         summary["logistics"] = {key: _iso(value) for key, value in proposal(item).items()}
-    if role in ("donor", "admin") and (contact or {}).get("whatsapp"):
+    if (role == "admin" or is_owner(user, item)) and (contact or {}).get("whatsapp"):
         summary["whatsapp"] = contact["whatsapp"]
     if role in ("social_worker", "admin"):
         summary["caseId"] = match.get("caseId")
@@ -687,13 +814,23 @@ def view(item, user, private=None, contact=None, now=None):
         "donorStage": donor_stage(item),
         "allowedActions": allowed_actions(item, user),
         "submittedAt": _iso(item.get("submittedAt") or item.get("createdAt")),
+        "waitlistLength": len(waitlist(item)),
     })
+    position = waitlist_position(item, (user or {}).get("uid"))
+    if position:
+        out["waitlistPosition"] = position
     if is_party(user, item):
         out.update({key: _iso(item[key]) for key in PARTY_FIELDS if key in item})
         if item.get("status") in CANCELLED_STATUSES:
             out["cancelKind"] = cancel_kind(item)
         if active_match(item):
             out["matchSummary"] = match_summary(item, user, contact, now or _utcnow())
+        if waitlist(item):
+            # Who is waiting, without the cases: the donor sees "2 people waiting".
+            out["waitlist"] = [
+                {"organisation": entry.get("organisation"), "requestedAt": _iso(entry.get("requestedAt"))}
+                for entry in waitlist(item)
+            ]
         if private is not None:
             out["private"] = private
     return out
@@ -748,7 +885,7 @@ def _apply_action(transaction, db, reference, action, user, payload):
         and is_party(user, item)
         and payload.get("expected_status") == item.get("status")
         and (item.get("status"), action) in TRANSITIONS
-        and user.get("role") in TRANSITIONS[(item.get("status"), action)].roles
+        and acting_roles(user, item) & TRANSITIONS[(item.get("status"), action)].roles
         and already_done(item)
     ):
         return item, False
@@ -788,8 +925,10 @@ def _load_context(transaction, db, item, action, user, payload):
     if not item or action not in EFFECTS:
         return {}, None
 
-    if action == "accept_match":
+    if action in ("accept_match", "join_waitlist"):
         case_id = payload.get("caseId")
+    elif action == "leave_waitlist":
+        return {}, None
     else:
         case_id = active_match(item).get("caseId")
     if not isinstance(case_id, str) or not case_id:
@@ -803,7 +942,7 @@ def _load_context(transaction, db, item, action, user, payload):
     else:
         case_reference = None
 
-    if action == "accept_match" and user.get("uid"):
+    if action in ("accept_match", "join_waitlist") and user.get("uid"):
         profile = db.collection(PROFILES).document(user["uid"]).get(transaction=transaction)
         ctx["profile"] = profile.to_dict() or {}
     return ctx, case_reference
@@ -831,6 +970,91 @@ def _apply_edit(transaction, reference, user, changes, private_changes):
     return {**item, **updates}
 
 
+def _remove_from_waitlist(db, reference, case_id):
+    @firestore.transactional
+    def remove(transaction):
+        item = _snapshot_item(reference.get(transaction=transaction))
+        if not item:
+            return
+        remaining = [entry for entry in waitlist(item) if entry.get("caseId") != case_id]
+        transaction.update(reference, _waitlist_updates(remaining))
+
+    remove(db.transaction())
+
+
+def _queue_outbox(db, kind, item, entry, now):
+    db.collection(OUTBOX).document().set(
+        outbox_entry(
+            kind, item["id"], entry.get("socialWorkerId"), now,
+            toRole="social_worker", organisation=entry.get("organisation"),
+        )
+    )
+
+
+def settle_waitlist(db, reference, item, now=None):
+    """After an action: when the item is back in the pool, match the first
+    eligible case on its waitlist; when it can no longer be matched (withdrawn,
+    rejected, delivered), close the waitlist. Returns what happened.
+
+    Runs after the action's own transaction. Each promotion is an ordinary
+    accept_match (all its checks, in its own transaction), so a race with a
+    social worker requesting the item directly is safe: whoever commits first
+    wins and the other gets a 409.
+    """
+    now = now or _utcnow()
+    if not item or not waitlist(item):
+        return {}
+    status = item.get("status")
+    if status in ACTIVE_MATCH_STATUSES:
+        return {}
+
+    if status != "available":
+        for entry in waitlist(item):
+            _queue_outbox(db, "waitlist_closed", item, entry, now)
+        reference.update(_waitlist_updates([]))
+        return {"closed": len(waitlist(item))}
+
+    dropped = 0
+    for entry in waitlist(item):
+        user = {"uid": entry.get("socialWorkerId"), "role": "social_worker", "approval": "approved"}
+        try:
+            matched, changed = apply_action(
+                db, reference, "accept_match", user,
+                {"expected_status": "available", "caseId": entry.get("caseId")},
+            )
+        except LifecycleError as error:
+            if error.status_code == 409:
+                return {"dropped": dropped}  # someone else took it first
+            _remove_from_waitlist(db, reference, entry.get("caseId"))
+            _queue_outbox(db, "waitlist_closed", item, entry, now)
+            dropped += 1
+            continue
+        if changed:
+            _queue_outbox(db, "waitlist_promoted", matched, entry, now)
+            return {"promoted": entry.get("caseId"), "dropped": dropped}
+    return {"dropped": dropped}
+
+
+def expire_waitlists(db, now):
+    """Drop waitlist entries older than WAITLIST_DAYS (Figma: a request with no
+    successful match after 30 days is dropped) and settle any waitlist left on
+    an item that is no longer held. Returns counts."""
+    expired = settled = 0
+    cutoff = now - timedelta(days=WAITLIST_DAYS)
+    for snapshot in db.collection(COLLECTION).where("waitlistOpen", "==", True).stream():
+        item = _snapshot_item(snapshot)
+        stale = [entry for entry in waitlist(item) if (entry.get("requestedAt") or now) < cutoff]
+        for entry in stale:
+            _remove_from_waitlist(db, snapshot.reference, entry.get("caseId"))
+            _queue_outbox(db, "waitlist_expired", item, entry, now)
+            expired += 1
+        if item.get("status") not in ACTIVE_MATCH_STATUSES:
+            fresh = _snapshot_item(snapshot.reference.get())
+            if settle_waitlist(db, snapshot.reference, fresh, now):
+                settled += 1
+    return {"expired": expired, "settled": settled}
+
+
 def lapse_overdue(db, now):
     """Withdraw matched items whose donor did not connect in time. Returns their ids."""
     lapsed = []
@@ -850,4 +1074,5 @@ def lapse_overdue(db, now):
             continue  # the donor connected since the query ran
         if changed:
             lapsed.append(snapshot.id)
+            settle_waitlist(db, snapshot.reference, _snapshot_item(snapshot.reference.get()), now)
     return lapsed

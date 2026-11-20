@@ -13,6 +13,7 @@ COLLECTION = "cases"
 # lifecycle.py writes it.
 EDITABLE = {"reference", "household", "location", "delivery", "priority", "status", "needs"}
 DIMENSION_KEYS = ("width", "depth", "height")
+CASE_STATUSES = ("open", "closed")
 
 
 def _clean_needs(needs):
@@ -108,6 +109,8 @@ def update_case(case_id):
     changes = public_patch(request.get_json(force=True), EDITABLE)
     if "needs" in changes:
         changes["needs"] = _clean_needs(changes["needs"])
+    if "status" in changes and changes["status"] not in CASE_STATUSES:
+        abort(400, description="Case status must be open or closed")
     # A matched item points at this case, so its needs and status stay put
     # until the match ends.
     if case.get("fulfilment") and ("needs" in changes or "status" in changes):

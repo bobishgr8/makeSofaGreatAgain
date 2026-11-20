@@ -7,6 +7,7 @@ import { DetailsCard } from "./SubmittedView";
 const CANCELLED_MESSAGES: Record<CancelKind, string> = {
   donor: "You cancelled this donation.",
   rejected: "Not accepted after review.",
+  removed: "Our team took this listing down.",
   no_match: "We couldn't find a match before your expected delivery date.",
   no_connect: "This match closed because we didn't hear from you within 5 days.",
 };
@@ -15,7 +16,8 @@ export default function CancelledView({ item }: { item: FurnitureView }) {
   const photo = primaryPhoto(item);
   const kind = item.cancelKind ?? "donor";
   // The system's reasons are codes, not something a person wrote.
-  const showReason = item.cancelReason && (kind === "donor" || kind === "rejected");
+  const showReason =
+    item.cancelReason && (kind === "donor" || kind === "rejected" || kind === "removed");
 
   return (
     <>

@@ -12,3 +12,11 @@ firestore-debug.log
 package-lock.json
 /frontend/package-lock.json
 firebaseServiceAccount.json
+
+# Local reference material and notes (not part of the app)
+CLAUDE.md
+/Refurbish Product Requirements Document (PRD)*
+/Refurbish Mock Design v1.pdf
+
+# Scratch scripts
+frontend/src/modules/donors/test.py

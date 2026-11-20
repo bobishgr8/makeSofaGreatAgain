@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useNavigate } from "react-router-dom";
 
@@ -7,7 +7,18 @@ import FormField from "../../common/components/FormField";
 import { api } from "../../common/api";
 import { auth, storage } from "../../common/firebase";
 import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
-import { todaySgt } from "../../common/dates";
+import { addDays, todaySgt } from "../../common/dates";
+import {
+  applicableDetails,
+  CONDITION_OPTIONS,
+  MIN_COLLECTION_DAYS,
+  missingDetail,
+  questionsFor,
+  specFor,
+  type Question,
+} from "../../common/donationSpec";
+import { CONDITION_LABELS } from "../../common/dto/FurnitureDTO";
+import { defaultInitialDraft } from "../../common/config";
 import type { Draft } from "../../common/dto/DraftDTO";
 import type { FurnitureView } from "../../common/dto/FurnitureDTO";
 import "./FurnitureForm.css";
@@ -29,6 +40,8 @@ const MIN_CONDITION_NOTES_LENGTH = 5;
 const MAX_CONDITION_NOTES_LENGTH = 800;
 const MAX_CONTACT_NAME_LENGTH = 80;
 const WHATSAPP_PATTERN = /^\+?[0-9()\-\s]{7,20}$/;
+const MAX_BRAND_LENGTH = 80;
+const POSTAL_CODE_PATTERN = /^\d{6}$/;
 
 function isValidNumber(value: string) {
   return value.trim() !== "" && Number.isFinite(Number(value));
@@ -39,27 +52,59 @@ export default function FurnitureForm() {
     useFormConfig();
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState<Draft>(() => ({
+    // Client defaults first, so fields an older server config lacks still exist.
+    ...defaultInitialDraft(),
     ...initialDraft,
     contactName: auth.currentUser?.displayName ?? "",
   }));
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
+  // The donor picked "Others" as the item type and is typing their own.
+  const [otherType, setOtherType] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  // Fill in what the donor's profile already knows, without overwriting typing.
+  useEffect(() => {
+    api<{ displayName?: string; phone?: string; address?: string }>("/api/donors/me")
+      .then((profile) =>
+        setDraft((current) => ({
+          ...current,
+          contactName: current.contactName || profile.displayName || "",
+          whatsapp: current.whatsapp || profile.phone || "",
+          pickupAddress: current.pickupAddress || profile.address || "",
+        })),
+      )
+      .catch(() => {});
+  }, []);
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
   function chooseCategory(category: string) {
+    setOtherType(false);
     setDraft((current) => ({
       ...current,
       category,
+      // The item types and questions differ per category.
+      subcategory: category === current.category ? current.subcategory : "",
+      details: category === current.category ? current.details : {},
       title:
         current.title ||
         `Pre-loved ${categoryLabels[category] ?? "furniture item"}`,
     }));
   }
+
+  function updateDetail(key: string, value: string) {
+    setDraft((current) => ({
+      ...current,
+      details: { ...current.details, [key]: value },
+    }));
+  }
+
+  const spec = specFor(draft.category);
+  const questions = draft.category ? questionsFor(draft.category, draft.details) : [];
 
   function addPhotos(event: ChangeEvent<HTMLInputElement>) {
     setError("");
@@ -136,6 +181,26 @@ export default function FurnitureForm() {
       )
         return `Condition note must be between ${MIN_CONDITION_NOTES_LENGTH} and ${MAX_CONDITION_NOTES_LENGTH} characters.`;
 
+      if (spec.itemTypes && !draft.subcategory.trim())
+        return "Choose the item type.";
+
+      if (
+        draft.brand.trim().length > MAX_BRAND_LENGTH ||
+        draft.modelNumber.trim().length > MAX_BRAND_LENGTH
+      )
+        return `Brand and model number must be at most ${MAX_BRAND_LENGTH} characters.`;
+
+      const unanswered = missingDetail(draft.category, draft.details);
+      if (unanswered) return `Please answer: ${unanswered}`;
+
+      const badNumber = questions.find(
+        (question) =>
+          question.kind === "number" &&
+          (draft.details[question.key] ?? "").trim() !== "" &&
+          !(Number(draft.details[question.key]) > 0),
+      );
+      if (badNumber) return `${badNumber.label} must be a positive number.`;
+
       if (
         config.quantity &&
         (!Number.isInteger(draft.quantity) ||
@@ -169,8 +234,10 @@ export default function FurnitureForm() {
       });
       if (missing || !draft.pickupAddress.trim() || !draft.expectedDeliveryDate)
         return "Complete the dimensions, location, access and collection details.";
-      if (draft.expectedDeliveryDate < todaySgt())
-        return "The expected delivery date can't be in the past.";
+      if (!POSTAL_CODE_PATTERN.test(draft.postalCode.replace(/\s/g, "")))
+        return "Enter the 6-digit postal code for collection.";
+      if (draft.expectedDeliveryDate < addDays(todaySgt(), MIN_COLLECTION_DAYS))
+        return `The collect-by date must be at least ${MIN_COLLECTION_DAYS} days from today.`;
       if (
         config.deadlineType &&
         draft.deadlineType === "specific" &&
@@ -199,6 +266,9 @@ export default function FurnitureForm() {
       });
       if (missing)
         return "Confirm your contact details and all three declarations.";
+
+      if (!draft.deliveryCostAcknowledged)
+        return "Please confirm that you'll cover the delivery cost.";
 
       if (config.contactName && draft.contactName.trim().length > MAX_CONTACT_NAME_LENGTH)
         return `Contact name must be at most ${MAX_CONTACT_NAME_LENGTH} characters.`;
@@ -260,10 +330,15 @@ export default function FurnitureForm() {
         method: "POST",
         body: JSON.stringify({
           pickupAddress: draft.pickupAddress.trim(),
+          postalCode: draft.postalCode.replace(/\s/g, ""),
+          deliveryCostAcknowledged: draft.deliveryCostAcknowledged,
           expectedDeliveryDate: draft.expectedDeliveryDate,
           title: draft.title,
           category: draft.category,
-          subcategory: draft.subcategory || null,
+          subcategory: draft.subcategory.trim() || null,
+          brand: draft.brand.trim() || null,
+          modelNumber: draft.modelNumber.trim() || null,
+          details: applicableDetails(draft.category, draft.details),
           condition: draft.condition,
           conditionNotes: draft.conditionNotes,
           quantity: draft.quantity,
@@ -332,7 +407,7 @@ export default function FurnitureForm() {
       <form className="donation-form" onSubmit={submit}>
         {step === 1 && (
           <section>
-            <p className="form-kicker">01 · The item</p>
+            <p className="form-kicker">The item</p>
             <h2>What are you passing on?</h2>
             <div className="form-grid">
               {config.category && (
@@ -350,15 +425,75 @@ export default function FurnitureForm() {
                   </select>
                 </FormField>
               )}
-              {config.subcategory && (
-                <FormField label="Type or subtype">
+              {(config.subcategory || spec.itemTypes) && draft.category && (
+                <FormField label="Item type">
+                  {spec.itemTypes ? (
+                    <select
+                      value={
+                        otherType
+                          ? "Others"
+                          : spec.itemTypes.includes(draft.subcategory)
+                            ? draft.subcategory
+                            : ""
+                      }
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setOtherType(value === "Others");
+                        update("subcategory", value === "Others" ? "" : value);
+                      }}
+                      required
+                    >
+                      <option value="">Choose one</option>
+                      {spec.itemTypes.map((type) => (
+                        <option key={type}>{type}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={draft.subcategory}
+                      onChange={(event) =>
+                        update("subcategory", event.target.value)
+                      }
+                      placeholder="What is it?"
+                      maxLength={80}
+                    />
+                  )}
+                </FormField>
+              )}
+              {otherType && (
+                <FormField label="Describe the type">
                   <input
                     value={draft.subcategory}
                     onChange={(event) =>
                       update("subcategory", event.target.value)
                     }
-                    placeholder="e.g. three-seater, dining, wardrobe"
+                    placeholder="e.g. day bed, shoe cabinet"
                     maxLength={80}
+                    required
+                  />
+                </FormField>
+              )}
+              {draft.category && (
+                <FormField
+                  label={spec.brandRecommended ? "Brand (recommended)" : "Brand (optional)"}
+                >
+                  <input
+                    value={draft.brand}
+                    onChange={(event) => update("brand", event.target.value)}
+                    maxLength={MAX_BRAND_LENGTH}
+                  />
+                </FormField>
+              )}
+              {draft.category && (
+                <FormField
+                  label={spec.brandRecommended ? "Model number (recommended)" : "Model number (optional)"}
+                >
+                  <input
+                    value={draft.modelNumber}
+                    onChange={(event) =>
+                      update("modelNumber", event.target.value)
+                    }
+                    maxLength={MAX_BRAND_LENGTH}
                   />
                 </FormField>
               )}
@@ -385,10 +520,11 @@ export default function FurnitureForm() {
                     required
                   >
                     <option value="">Choose one</option>
-                    <option value="excellent">Excellent</option>
-                    <option value="good">Good</option>
-                    <option value="usable">Usable</option>
-                    <option value="repair_needed">Needs minor repair</option>
+                    {CONDITION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </FormField>
               )}
@@ -423,6 +559,18 @@ export default function FurnitureForm() {
                 </div>
               )}
             </div>
+            {questions.length > 0 && (
+              <div className="form-grid">
+                {questions.map((question) => (
+                  <DetailQuestion
+                    key={question.key}
+                    question={question}
+                    value={draft.details[question.key] ?? ""}
+                    onChange={(value) => updateDetail(question.key, value)}
+                  />
+                ))}
+              </div>
+            )}
             {(config.petHousehold || config.smokingHousehold) && (
               <fieldset className="choice-field">
                 <legend>Household disclosures</legend>
@@ -456,9 +604,18 @@ export default function FurnitureForm() {
               <div className="photo-field">
                 <strong>Photos</strong>
                 <p>
-                  Add the front, side and any visible wear. Up to five images,
-                  10 MB each.
+                  {draft.category
+                    ? "Please include:"
+                    : "Add the front, side and any visible wear."}{" "}
+                  Up to five images, 10 MB each.
                 </p>
+                {draft.category && (
+                  <ul className="photo-checklist">
+                    {spec.photoChecklist.map((shot) => (
+                      <li key={shot}>{shot}</li>
+                    ))}
+                  </ul>
+                )}
                 <div className="photo-grid">
                   {photos.map((photo, index) => (
                     <figure key={photo.id}>
@@ -495,7 +652,7 @@ export default function FurnitureForm() {
 
         {step === 2 && (
           <section>
-            <p className="form-kicker">02 · The practical bits</p>
+            <p className="form-kicker">The practical bits</p>
             <h2>Will it fit—and can it move?</h2>
             <div className="form-grid three">
               {config.widthCm && (
@@ -563,10 +720,20 @@ export default function FurnitureForm() {
                   required
                 />
               </FormField>
-              <FormField label="Expected delivery date">
+              <FormField label="Postal code">
+                <input
+                  value={draft.postalCode}
+                  inputMode="numeric"
+                  maxLength={7}
+                  placeholder="e.g. 529889"
+                  onChange={(event) => update("postalCode", event.target.value)}
+                  required
+                />
+              </FormField>
+              <FormField label="Collect by (at least 3 days from today)">
                 <input
                   type="date"
-                  min={todaySgt()}
+                  min={addDays(todaySgt(), MIN_COLLECTION_DAYS)}
                   value={draft.expectedDeliveryDate}
                   onChange={(event) =>
                     update("expectedDeliveryDate", event.target.value)
@@ -700,7 +867,7 @@ export default function FurnitureForm() {
         )}
         {step === 3 && (
           <section>
-            <p className="form-kicker">03 · Confirm</p>
+            <p className="form-kicker">Confirm</p>
             <h2>Who should coordinate the handover?</h2>
             <div className="privacy-note">
               <strong>Your exact address is not published.</strong>
@@ -773,10 +940,22 @@ export default function FurnitureForm() {
                   I agree to be contacted about collection and handover.
                 </label>
               )}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={draft.deliveryCostAcknowledged}
+                  onChange={(event) =>
+                    update("deliveryCostAcknowledged", event.target.checked)
+                  }
+                />{" "}
+                I understand that I&rsquo;ll need to cover the delivery cost for
+                the item to reach the recipient.
+              </label>
             </div>
             <div className="review-card">
               <span>
-                {draft.quantity} × {draft.condition}
+                {draft.quantity} ×{" "}
+                {CONDITION_LABELS[draft.condition] ?? draft.condition}
               </span>
               <h3>{draft.title}</h3>
               <p>
@@ -818,5 +997,58 @@ export default function FurnitureForm() {
         </div>
       </form>
     </main>
+  );
+}
+
+function DetailQuestion({
+  question,
+  value,
+  onChange,
+}: {
+  question: Question;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const label = question.optional ? `${question.label} (optional)` : question.label;
+  if (question.kind === "choice") {
+    return (
+      <FormField label={label}>
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          required={!question.optional}
+        >
+          <option value="">Choose one</option>
+          {question.options?.map((option) => (
+            <option key={option}>{option}</option>
+          ))}
+        </select>
+      </FormField>
+    );
+  }
+  if (question.kind === "number") {
+    return (
+      <FormField label={question.unit ? `${label} (${question.unit})` : label}>
+        <input
+          type="number"
+          min={0}
+          step="any"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          required={!question.optional}
+        />
+      </FormField>
+    );
+  }
+  return (
+    <div className="wide">
+      <FormField label={label}>
+        <textarea
+          value={value}
+          maxLength={500}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </FormField>
+    </div>
   );
 }

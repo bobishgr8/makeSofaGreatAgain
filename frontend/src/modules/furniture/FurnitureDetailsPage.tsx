@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import StatusBadge from "../../common/components/StatusBadge";
-import type { Furniture } from "../../common/dto/FurnitureDTO";
+import { itemFacts } from "../../common/donationSpec";
+import { CONDITION_LABELS, type Furniture } from "../../common/dto/FurnitureDTO";
 
 
 export default function FurnitureDetailsPage() {
@@ -96,8 +97,12 @@ export default function FurnitureDetailsPage() {
 
         <DetailRow
           label="Condition"
-          value={item.condition}
+          value={CONDITION_LABELS[item.condition] ?? item.condition}
         />
+
+        {itemFacts(item).map((fact) => (
+          <DetailRow key={fact.label} label={fact.label} value={fact.value} />
+        ))}
       </section>
 
       <section className="furniture-details-section">

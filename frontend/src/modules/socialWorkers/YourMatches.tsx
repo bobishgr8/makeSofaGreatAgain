@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
 import Button from "../../common/components/Button";
@@ -12,6 +12,7 @@ import {
   type FurnitureView,
 } from "../../common/dto/FurnitureDTO";
 import { useFurnitureAction } from "../../common/hooks/useFurnitureAction";
+import { api } from "../../common/api";
 
 const REASON_MAX_LEN = 500;
 
@@ -117,6 +118,8 @@ function MatchRow({
           <strong>Success! Delivery complete.</strong>
 
           <p className="muted-text">Thank you for making a difference!</p>
+
+          <ThankYouNote item={item} onSent={onChanged} />
         </div>
       ) : item.status === "in_delivery" ? (
         <div>
@@ -288,5 +291,68 @@ function MatchRow({
         </Link>
       </div>
     </Card>
+  );
+}
+
+const NOTE_MAX_LEN = 500;
+
+// EPIC 7f: pass on a note from the household to the donor, once per delivery.
+function ThankYouNote({ item, onSent }: { item: FurnitureView; onSent: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  if (item.thankYouSentAt) {
+    return <p className="muted-text">Thank-you note sent to the donor on {formatDate(item.thankYouSentAt)}.</p>;
+  }
+
+  if (!open) {
+    return (
+      <Button type="button" className="secondary" onClick={() => setOpen(true)}>
+        Write a thank-you note
+      </Button>
+    );
+  }
+
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!message.trim()) return setError("Please write a short note.");
+    setSending(true);
+    setError("");
+    try {
+      await api(`/api/furniture/${item.id}/thank-you`, {
+        method: "POST",
+        body: JSON.stringify({ message: message.trim() }),
+      });
+      onSent();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We couldn't send the note.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={send}>
+      <label className="form-field">
+        <span>A note from the household to the donor</span>
+        <textarea
+          value={message}
+          maxLength={NOTE_MAX_LEN}
+          placeholder="e.g. Thank you for the sofa, it has made our home so much more comfortable."
+          onChange={(event) => setMessage(event.target.value)}
+        />
+      </label>
+      {error && <p className="error-text">{error}</p>}
+      <div className="actions">
+        <Button type="submit" disabled={sending}>
+          {sending ? "Sending..." : "Send note"}
+        </Button>
+        <Button type="button" className="secondary" onClick={() => setOpen(false)}>
+          Not now
+        </Button>
+      </div>
+    </form>
   );
 }

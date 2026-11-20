@@ -6,6 +6,7 @@ from firebase_admin import credentials
 from flask import Flask, jsonify
 from flask_cors import CORS
 
+from .admin import admin_bp
 from .auth import auth_bp
 from .cases import cases_bp
 from .donors import donors_bp
@@ -13,6 +14,7 @@ from .furniture import furniture_bp
 from .internal import internal_bp
 from .matching import matching_bp
 from .social_workers import social_workers_bp
+from .thanks import thanks_bp
 
 
 def create_app(test_config=None):
@@ -24,6 +26,8 @@ def create_app(test_config=None):
         WHATSAPP_BOT_URL=os.getenv("WHATSAPP_BOT_URL"),
         WHATSAPP_BOT_SECRET=os.getenv("WHATSAPP_BOT_SECRET"),
         INTERNAL_SCHEDULER_TOKEN=os.getenv("INTERNAL_SCHEDULER_TOKEN"),
+        # WhatsApp number (digits, international format) for the Help page (EPIC 13).
+        HELP_WHATSAPP=os.getenv("HELP_WHATSAPP"),
     )
 
     if test_config:
@@ -61,6 +65,8 @@ def create_app(test_config=None):
     app.register_blueprint(cases_bp)
     app.register_blueprint(matching_bp)
     app.register_blueprint(internal_bp)
+    app.register_blueprint(thanks_bp)
+    app.register_blueprint(admin_bp)
 
     # Server-side configuration endpoint
     from .config import config_bp
@@ -80,10 +86,18 @@ def create_app(test_config=None):
             "error": str(error.description),
         }), 400
 
+    @app.errorhandler(403)
+    def forbidden(error):
+        return jsonify({"error": str(error.description)}), 403
+
     @app.errorhandler(404)
     def not_found(_error):
         return jsonify({
             "error": "Resource not found",
         }), 404
+
+    @app.errorhandler(409)
+    def conflict(error):
+        return jsonify({"error": str(error.description)}), 409
 
     return app

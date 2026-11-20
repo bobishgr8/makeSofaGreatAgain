@@ -20,6 +20,13 @@ export function formatDate(value?: string | null) {
   return `${parts.day} ${parts.month} ${parts.year}`;
 }
 
+// A YYYY-MM-DD date `days` after another one (calendar arithmetic, no time zone).
+export function addDays(isoDate: string, days: number) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 // Today in Singapore as YYYY-MM-DD, for <input type="date" min=...>.
 export function todaySgt() {
   return new Intl.DateTimeFormat("en-CA", {

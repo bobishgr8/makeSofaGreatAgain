@@ -5,8 +5,26 @@ import { api, ApiError } from "../../common/api";
 import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
 import Button from "../../common/components/Button";
 import Card from "../../common/components/Card";
-import type { FurnitureAction, FurnitureView } from "../../common/dto/FurnitureDTO";
-import { FURNITURE_STATUS_LABELS } from "../../common/dto/FurnitureDTO";
+import PlatformDashboard from "./PlatformDashboard";
+import type {
+  FurnitureAction,
+  FurnitureStatus,
+  FurnitureView,
+} from "../../common/dto/FurnitureDTO";
+import { FURNITURE_STATUS_LABELS, FURNITURE_STATUSES } from "../../common/dto/FurnitureDTO";
+
+// Admin overrides that end or undo something, so the server asks why.
+const OVERRIDE_ACTIONS = ["withdraw_listing", "release_match", "cancel_delivery"] as const;
+type OverrideAction = (typeof OVERRIDE_ACTIONS)[number];
+const OVERRIDE_LABELS: Record<OverrideAction, string> = {
+  withdraw_listing: "Take listing down",
+  release_match: "Release match",
+  cancel_delivery: "Cancel delivery",
+};
+
+type AdminTab = "dashboard" | "users" | "furniture" | "form";
+type RoleFilter = "all" | "donor" | "social_worker" | "admin" | "unassigned";
+type FurnitureStatusFilter = "all" | FurnitureStatus;
 
 type UserRow = {
   id: string;
@@ -78,7 +96,7 @@ const fieldLabels: Record<keyof FormConfig, string> = {
 export default function AdminDashboard() {
   const { config, toggleField } = useFormConfig();
 
-  const [tab, setTab] = useState<AdminTab>("users");
+  const [tab, setTab] = useState<AdminTab>("dashboard");
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -89,8 +107,17 @@ export default function AdminDashboard() {
   const [furniture, setFurniture] = useState<FurnitureView[]>([]);
   const [furnitureLoading, setFurnitureLoading] = useState(true);
   const [furnitureError, setFurnitureError] = useState<string | null>(null);
+  const [furnitureSearch, setFurnitureSearch] = useState("");
+  const [furnitureStatusFilter, setFurnitureStatusFilter] =
+    useState<FurnitureStatusFilter>("all");
   const [pendingFurnitureId, setPendingFurnitureId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<{ id: string; reason: string } | null>(null);
+  // An override that needs a reason (EPIC 14): which item, which action.
+  const [overriding, setOverriding] = useState<{
+    id: string;
+    action: OverrideAction;
+    reason: string;
+  } | null>(null);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -196,6 +223,7 @@ export default function AdminDashboard() {
         ),
       );
       setRejecting(null);
+      setOverriding(null);
     } catch (error) {
       console.error(
         "Failed to update furniture status",
@@ -354,6 +382,14 @@ export default function AdminDashboard() {
       <div className="match-tabs">
         <button
           type="button"
+          className={tab === "dashboard" ? "button" : "button secondary"}
+          onClick={() => setTab("dashboard")}
+        >
+          Dashboard
+        </button>
+
+        <button
+          type="button"
           className={tab === "users" ? "button" : "button secondary"}
           onClick={() => setTab("users")}
         >
@@ -376,6 +412,8 @@ export default function AdminDashboard() {
           Form experience
         </button>
       </div>
+
+      {tab === "dashboard" && <PlatformDashboard />}
 
       {tab === "form" && (
       <Card className="admin-panel admin-panel-fullwidth">
@@ -777,6 +815,45 @@ export default function AdminDashboard() {
                           Reject
                         </Button>
                       ))}
+
+                    {OVERRIDE_ACTIONS.filter((action) =>
+                      item.allowedActions.includes(action),
+                    ).map((action) =>
+                      overriding?.id === item.id && overriding.action === action ? (
+                        <span key={action} className="admin-override">
+                          <input
+                            value={overriding.reason}
+                            maxLength={500}
+                            placeholder="Reason (shown to the donor)"
+                            onChange={(event) =>
+                              setOverriding({ ...overriding, reason: event.target.value })
+                            }
+                          />
+                          <Button
+                            type="button"
+                            className="secondary"
+                            disabled={!overriding.reason.trim() || pendingFurnitureId === item.id}
+                            onClick={() =>
+                              runFurnitureAction(item, action, overriding.reason.trim())
+                            }
+                          >
+                            Confirm
+                          </Button>
+                          <Button type="button" className="secondary" onClick={() => setOverriding(null)}>
+                            Keep
+                          </Button>
+                        </span>
+                      ) : (
+                        <Button
+                          key={action}
+                          type="button"
+                          className="secondary"
+                          onClick={() => setOverriding({ id: item.id, action, reason: "" })}
+                        >
+                          {OVERRIDE_LABELS[action]}
+                        </Button>
+                      ),
+                    )}
 
                     {item.allowedActions.includes("flag_for_review") && (
                       <Button

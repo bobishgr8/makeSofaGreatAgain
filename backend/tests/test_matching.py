@@ -184,3 +184,70 @@ class MatchingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MatchingRubricTests(unittest.TestCase):
+    """EPIC 2bii "To Be": household scenarios that pin down how suggestions rank.
+    Each compares two candidate items for one case; the first should rank higher.
+    Lift is the deciding factor for bulky items, distance for light ones."""
+
+    def score(self, candidate, need_case):
+        result = score_match(candidate, need_case, TODAY)
+        self.assertIsNotNone(result)
+        return result["score"]
+
+    def assertRanksAbove(self, better, worse, need_case):
+        self.assertGreater(self.score(better, need_case), self.score(worse, need_case))
+
+    def test_bulky_sofa_lift_beats_being_next_door(self):
+        """A family on a high floor in Tampines needs a 3-seater; a sofa from a
+        lift block nearby beats one from a walk-up in the same neighbourhood."""
+        household = case(ROOMY, delivery={"hasLift": True})
+        lift_nearby = item(location={"district": "Pasir Ris"}, collection={"hasLift": True})
+        walk_up_same_area = item(collection={"hasLift": False})
+        self.assertRanksAbove(lift_nearby, walk_up_same_area, household)
+
+    def test_light_chair_distance_beats_lift(self):
+        """For a dining chair, someone can carry it down the stairs: a chair in
+        the same neighbourhood beats one across the island with lifts."""
+        household = case(needs=[{"category": "chair"}])
+        chair = {"category": "chair", "dimensionsCm": {"width": 45, "depth": 50, "height": 85}}
+        nearby_no_lift = item(**chair, collection={"hasLift": False})
+        far_with_lift = item(**chair, location={"district": "Jurong West"})
+        self.assertRanksAbove(nearby_no_lift, far_with_lift, household)
+
+    def test_fridge_without_any_lift_ranks_low(self):
+        household = case(needs=[{"category": "fridge"}], delivery={"hasLift": False})
+        fridge = {"category": "fridge", "dimensionsCm": {"width": 60, "depth": 65, "height": 170}}
+        with_lift = item(**fridge, collection={"hasLift": True})
+        no_lift = item(**fridge, collection={"hasLift": False})
+        self.assertRanksAbove(with_lift, no_lift, household)
+        self.assertGreaterEqual(lift_importance(item(**fridge)), 0.9)
+
+    def test_an_item_that_does_not_fit_is_never_suggested(self):
+        """A wardrobe for a small room: 200 cm tall cannot go under a 180 cm ceiling slope."""
+        household = case(
+            {"width": 120, "depth": 70, "height": 180}, needs=[{
+                "category": "storage", "maxDimensionsCm": {"width": 120, "depth": 70, "height": 180},
+            }],
+        )
+        tall = item(category="storage", dimensionsCm={"width": 100, "depth": 60, "height": 200})
+        self.assertIsNone(score_match(tall, household, TODAY))
+
+    def test_a_donor_who_must_move_out_soon_comes_first(self):
+        household = case(ROOMY)
+        leaving_this_week = item(expectedDeliveryDate="2024-09-05")
+        no_rush = item(expectedDeliveryDate="2024-11-30")
+        self.assertRanksAbove(leaving_this_week, no_rush, household)
+
+    def test_a_known_fit_beats_an_unknown_size(self):
+        household = case(ROOMY)
+        measured = item()
+        unmeasured = item(dimensionsCm={})
+        self.assertRanksAbove(measured, unmeasured, household)
+
+    def test_closer_wins_when_all_else_is_equal(self):
+        household = case(ROOMY, location={"district": "Bedok"})
+        tampines = item(location={"district": "Tampines"})
+        woodlands = item(location={"district": "Woodlands"})
+        self.assertRanksAbove(tampines, woodlands, household)

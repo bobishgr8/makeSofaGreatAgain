@@ -6,13 +6,13 @@ export type CategoryLabels = Record<string, string>;
 // The server (backend/app/config.py) is the source of truth — do not hardcode
 // copies of these lists anywhere else in the app.
 export const defaultCategoryLabels: CategoryLabels = {
+  washing_machine: "washing machine / dryer",
+  fridge: "fridge",
   sofa: "sofa",
-  table: "table",
+  table: "table / study desk",
   chair: "chair",
   bed: "bed",
-  storage: "storage unit",
-  washing_machine: "washing machine",
-  fridge: "fridge",
+  storage: "wardrobe / cabinet / bookshelf",
   other: "furniture item",
 };
 
@@ -48,6 +48,9 @@ export const defaultInitialDraft = (): Draft => ({
   title: "",
   category: "",
   subcategory: "",
+  brand: "",
+  modelNumber: "",
+  details: {},
   condition: "",
   conditionNotes: "",
   quantity: 1,
@@ -56,6 +59,7 @@ export const defaultInitialDraft = (): Draft => ({
   heightCm: "",
   neighbourhood: "",
   pickupAddress: "",
+  postalCode: "",
   expectedDeliveryDate: "",
   floor: "",
   hasLift: "",
@@ -72,4 +76,5 @@ export const defaultInitialDraft = (): Draft => ({
   petHousehold: false,
   smokingHousehold: false,
   contactConsent: false,
+  deliveryCostAcknowledged: false,
 });

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Button from "../../../common/components/Button";
 import StatusBadge from "../../../common/components/StatusBadge";
 import { formatDate } from "../../../common/dates";
+import { itemFacts } from "../../../common/donationSpec";
 import { CONDITION_LABELS, type FurnitureView } from "../../../common/dto/FurnitureDTO";
 import { dimensionsLabel, primaryPhoto } from "../useDonorFurniture";
 
@@ -61,9 +62,21 @@ export function DetailsCard({ item }: { item: FurnitureView }) {
         )}
       </header>
       <DetailRow label="Condition" value={CONDITION_LABELS[item.condition] ?? item.condition} />
+      {itemFacts(item).map((fact) => (
+        <DetailRow key={fact.label} label={fact.label} value={fact.value} />
+      ))}
       <DetailRow label="Dimensions" value={dimensionsLabel(item)} />
       <DetailRow label="Pick up location" value={item.private?.pickupAddress} />
+      {item.private?.postalCode && (
+        <DetailRow label="Postal code" value={item.private.postalCode} />
+      )}
       <DetailRow label="Expected delivery date" value={formatDate(item.expectedDeliveryDate)} />
+      {item.waitlist && item.waitlist.length > 0 && (
+        <DetailRow
+          label="Waiting"
+          value={`${item.waitlist.length} more social worker${item.waitlist.length === 1 ? "" : "s"} would like it`}
+        />
+      )}
     </section>
   );
 }

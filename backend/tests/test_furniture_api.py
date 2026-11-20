@@ -72,6 +72,8 @@ class FurnitureApiTests(unittest.TestCase):
             "location": {"city": "ReFurbish", "district": "Tampines"},
             "collection": {"floor": 3, "hasLift": True},
             "pickupAddress": "88 Tampines Road",
+            "postalCode": "529889",
+            "deliveryCostAcknowledged": True,
             "expectedDeliveryDate": (today_sgt() + timedelta(days=10)).isoformat(),
             **overrides,
         }
@@ -97,7 +99,7 @@ class FurnitureApiTests(unittest.TestCase):
         item = self.create(status="available")
         self.assertEqual(item["status"], "pending_review")
         self.assertEqual(item["donorStage"], "submitted")
-        self.assertEqual(item["private"], {"pickupAddress": "88 Tampines Road"})
+        self.assertEqual(item["private"], {"pickupAddress": "88 Tampines Road", "postalCode": "529889"})
         self.assertEqual(item["allowedActions"], ["cancel_request", "edit"])
         self.assertEqual(len(self.history(item["id"])), 1)
         stored = self.db.collection("furniture").document(item["id"]).get().to_dict()
@@ -238,8 +240,12 @@ class FurnitureApiTests(unittest.TestCase):
 
         self.app.config["INTERNAL_SCHEDULER_TOKEN"] = "secret"
         try:
-            soon = self.create(expectedDeliveryDate=today_sgt().isoformat())
+            soon = self.create()
             self.act(soon["id"], "approve", self.as_user("admin-1", "admin"), "pending_review")
+            # New listings need a date 3+ days out; an older one can be due today.
+            self.db.collection("furniture").document(soon["id"]).update(
+                {"expectedDeliveryDate": today_sgt().isoformat()}
+            )
             ok = self.client.post("/api/internal/expire", headers={"X-Internal-Token": "secret"})
             self.assertEqual(json.loads(ok.data), {"lapsed": []})
         finally:
@@ -560,6 +566,7 @@ class FurnitureApiTests(unittest.TestCase):
         self.assertEqual(proposed.get_json()["private"], {
             "pickupAddress": "90 Tampines Road",
             "deliveryAddress": "12 Bedok North Ave 4",
+            "postalCode": "529889",
         })
         stored = self.db.collection("furniture").document(item["id"]).get().to_dict()
         self.assertNotIn("deliveryAddress", json.dumps(stored, default=str))
@@ -680,6 +687,323 @@ class FurnitureApiTests(unittest.TestCase):
             (404, 405),
         )
         self.assertEqual(self.client.get("/api/donors/me/donor-1", headers=self.sw()).status_code, 404)
+
+    # ---------- Owners, browsing, cases, jobs ----------
+
+    def test_admin_who_lists_an_item_runs_it_as_the_donor(self):
+        from app.validation import today_sgt
+
+        body = {
+            "title": "Office chair", "category": "storage", "condition": "good",
+            "location": {"city": "ReFurbish", "district": "Tampines"},
+            "collection": {"floor": 1, "hasLift": True}, "pickupAddress": "1 Admin Road",
+            "postalCode": "123456", "deliveryCostAcknowledged": True,
+            "expectedDeliveryDate": (today_sgt() + timedelta(days=10)).isoformat(),
+        }
+        created = self.client.post("/api/furniture", json=body, headers=self.admin())
+        self.assertEqual(created.status_code, 201, created.get_json())
+        item_id = created.get_json()["id"]
+        self.act(item_id, "approve", self.admin(), "pending_review")
+        self.set_profile(self.sw())
+        case = self.create_case(self.sw())
+        self.assertEqual(self.request_item(item_id, case["id"], self.sw()).status_code, 200)
+
+        response = self.act(item_id, "connect", self.admin(), "matched")
+        self.assertEqual(response.status_code, 200, response.get_json())
+        connected = response.get_json()
+        self.assertTrue(connected["matchSummary"]["connected"])
+        self.assertEqual(connected["matchSummary"]["whatsapp"], "6591234567")
+        self.assertIn("arrange_delivery", connected["allowedActions"])
+
+    def test_browse_offers_a_request_to_signed_in_social_workers_only(self):
+        self.available()
+        anonymous = self.client.get("/api/furniture").get_json()
+        self.assertEqual(anonymous[0]["allowedActions"], [])
+        browsing = self.client.get("/api/furniture", headers=self.sw()).get_json()
+        self.assertEqual(browsing[0]["allowedActions"], ["accept_match"])
+        self.assertNotIn("private", browsing[0])
+
+    def test_case_status_must_be_open_or_closed(self):
+        case = self.create_case(self.sw())
+        bad = self.client.patch(f"/api/cases/{case['id']}", json={"status": "done"}, headers=self.sw())
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.patch(f"/api/cases/{case['id']}", json={"status": "closed"}, headers=self.sw())
+        self.assertEqual(ok.get_json()["status"], "closed")
+
+    def test_donation_form_rules(self):
+        from app.validation import today_sgt
+
+        def post(**overrides):
+            body = {
+                "title": "Fridge", "category": "fridge", "condition": "like_new",
+                "location": {"city": "ReFurbish", "district": "Tampines"},
+                "collection": {"floor": 2, "hasLift": True},
+                "pickupAddress": "1 Road", "postalCode": "52 9889",
+                "deliveryCostAcknowledged": True,
+                "expectedDeliveryDate": (today_sgt() + timedelta(days=3)).isoformat(),
+                "brand": "Samsung", "modelNumber": "RT20",
+                "details": {"working": "Yes", "halal": "Halal", "capacityLitres": "200"},
+                **overrides,
+            }
+            return self.client.post("/api/furniture", json=body, headers=self.owner())
+
+        created = post()
+        self.assertEqual(created.status_code, 201, created.get_json())
+        body = created.get_json()
+        self.assertEqual(body["details"]["halal"], "Halal")
+        self.assertEqual(body["brand"], "Samsung")
+        self.assertEqual(body["private"]["postalCode"], "529889")
+        self.assertNotIn("postalCode", self.client.get("/api/furniture").get_data(as_text=True))
+
+        too_soon = (today_sgt() + timedelta(days=2)).isoformat()
+        self.assertEqual(post(expectedDeliveryDate=too_soon).status_code, 400)
+        self.assertEqual(post(deliveryCostAcknowledged=False).status_code, 400)
+        self.assertEqual(post(postalCode="1234").status_code, 400)
+        self.assertEqual(post(details={"working": {"nested": 1}}).status_code, 400)
+        self.assertEqual(post(condition="brand_new").status_code, 400)
+
+    def test_outbox_is_sent_over_whatsapp_once(self):
+        from datetime import datetime, timezone
+
+        from app import notifications
+
+        self.client.patch(
+            "/api/donors/me", json={"phone": "+65 9876 5432", "consent": {"contactAllowed": True}},
+            headers=self.owner(),
+        )
+        item, _ = self.matched()  # queues "submitted", "approve" and "accept_match" for the donor
+        sent = []
+
+        def flaky(phone, text):
+            sent.append((phone, text))
+            return len(sent) != 1  # the first send fails and is retried
+
+        now = datetime.now(timezone.utc)
+        with self.app.app_context():
+            first = notifications.send_pending(self.db, now, flaky)
+            second = notifications.send_pending(self.db, now, flaky)
+            third = notifications.send_pending(self.db, now, flaky)
+        self.assertEqual(first["retrying"], 1)
+        self.assertEqual(first["sent"] + second["sent"], 3)
+        self.assertEqual(third, {"sent": 0, "skipped": 0, "failed": 0, "retrying": 0})
+        self.assertTrue(all(phone == "6598765432" for phone, _ in sent))
+        self.assertTrue(any("Sunrise Charity" in text and item["id"] in text for _, text in sent))
+
+    def test_outbox_respects_missing_consent_and_phone(self):
+        from datetime import datetime, timezone
+
+        from app import notifications
+
+        self.client.patch(
+            "/api/donors/me", json={"phone": "+65 9876 5432", "consent": {"contactAllowed": False}},
+            headers=self.owner(),
+        )
+        self.create()
+        sent = []
+        with self.app.app_context():
+            counts = notifications.send_pending(
+                self.db, datetime.now(timezone.utc), lambda phone, text: sent.append(phone) or True
+            )
+        self.assertEqual(sent, [])
+        self.assertEqual(counts["skipped"], 1)
+        entry = self.db.collection("notificationsOutbox").get()[0].to_dict()
+        self.assertEqual(entry["skipped"], "no_consent")
+
+    # ---------- Waitlist ----------
+
+    def join_waitlist(self, item_id, case_id, headers, status="matched"):
+        return self.act(item_id, "join_waitlist", headers, status, caseId=case_id)
+
+    def waiting(self, uid="sw-2"):
+        """A second social worker with a case for the same need."""
+        self.set_profile(self.sw(uid))
+        return self.create_case(self.sw(uid))
+
+    def test_taken_items_are_suggested_for_the_waitlist(self):
+        item, _ = self.matched()
+        other_case = self.waiting()
+        ranked = self.suggestions(other_case["id"], self.sw("sw-2"))
+        self.assertEqual([s["furniture"]["id"] for s in ranked], [item["id"]])
+        self.assertTrue(ranked[0]["waitlist"])
+        self.assertEqual(ranked[0]["furniture"]["allowedActions"], ["join_waitlist"])
+        self.assertNotIn("matchSummary", ranked[0]["furniture"])
+
+        joined = self.join_waitlist(item["id"], other_case["id"], self.sw("sw-2"))
+        self.assertEqual(joined.status_code, 200, joined.get_json())
+        body = joined.get_json()
+        self.assertEqual((body["status"], body["waitlistPosition"]), ("matched", 1))
+        self.assertNotIn("private", body)
+        self.assertEqual(self.join_waitlist(item["id"], other_case["id"], self.sw("sw-2")).status_code, 409)
+
+        mine = self.client.get("/api/matches/waitlist", headers=self.sw("sw-2")).get_json()
+        self.assertEqual([m["id"] for m in mine], [item["id"]])
+        self.assertEqual(mine[0]["waitlistCaseIds"], [other_case["id"]])
+        donor = self.client.get(f"/api/furniture/{item['id']}", headers=self.owner()).get_json()
+        self.assertEqual(len(donor["waitlist"]), 1)
+        # Already queued: not suggested again.
+        self.assertEqual(self.suggestions(other_case["id"], self.sw("sw-2")), [])
+
+    def test_item_back_in_the_pool_goes_to_the_first_in_the_queue(self):
+        item, first_case = self.matched()
+        second = self.waiting("sw-2")
+        third = self.waiting("sw-3")
+        self.assertEqual(self.join_waitlist(item["id"], second["id"], self.sw("sw-2")).status_code, 200)
+        self.assertEqual(self.join_waitlist(item["id"], third["id"], self.sw("sw-3")).status_code, 200)
+
+        self.act(item["id"], "connect", self.owner(), "matched")
+        rematch = self.act(item["id"], "rematch", self.owner(), "matched")
+        self.assertEqual(rematch.status_code, 200, rematch.get_json())
+        body = rematch.get_json()
+        self.assertEqual(body["status"], "matched")
+        stored = self.db.collection("furniture").document(item["id"]).get().to_dict()
+        self.assertEqual(stored["activeMatch"]["caseId"], second["id"])
+        self.assertEqual([e["caseId"] for e in stored["waitlist"]], [third["id"]])
+        self.assertEqual(self.stored_case(second["id"])["fulfilment"], {"storage": item["id"]})
+        self.assertEqual(self.stored_case(first_case["id"])["fulfilment"], {})
+        kinds = {(e.to_dict()["type"], e.to_dict()["toUid"]) for e in self.db.collection("notificationsOutbox").stream()}
+        self.assertIn(("waitlist_promoted", "sw-2"), kinds)
+        self.assertIn(("accept_match", "donor-1"), kinds)
+
+    def test_a_withdrawn_item_closes_its_waitlist(self):
+        item, _ = self.matched()
+        other_case = self.waiting()
+        self.join_waitlist(item["id"], other_case["id"], self.sw("sw-2"))
+        cancelled = self.act(item["id"], "cancel_donation", self.owner(), "matched", "Moving sooner")
+        self.assertEqual(cancelled.get_json()["status"], "withdrawn")
+        stored = self.db.collection("furniture").document(item["id"]).get().to_dict()
+        self.assertEqual((stored["waitlist"], stored["waitlistOpen"]), ([], False))
+        kinds = [e.to_dict()["type"] for e in self.db.collection("notificationsOutbox").stream()]
+        self.assertIn("waitlist_closed", kinds)
+
+    def test_a_case_that_cannot_take_it_is_skipped(self):
+        item, _ = self.matched()
+        closed = self.waiting("sw-2")
+        ready = self.waiting("sw-3")
+        self.join_waitlist(item["id"], closed["id"], self.sw("sw-2"))
+        self.join_waitlist(item["id"], ready["id"], self.sw("sw-3"))
+        self.client.patch(f"/api/cases/{closed['id']}", json={"status": "closed"}, headers=self.sw("sw-2"))
+        self.act(item["id"], "release_match", self.sw(), "matched", "No longer needed")
+        stored = self.db.collection("furniture").document(item["id"]).get().to_dict()
+        self.assertEqual(stored["activeMatch"]["caseId"], ready["id"])
+
+    def test_waitlist_requests_expire_after_30_days(self):
+        from datetime import datetime, timezone
+
+        from app import lifecycle
+
+        item, _ = self.matched()
+        other_case = self.waiting()
+        self.join_waitlist(item["id"], other_case["id"], self.sw("sw-2"))
+        later = datetime.now(timezone.utc) + timedelta(days=31)
+        self.assertEqual(lifecycle.expire_waitlists(self.db, later), {"expired": 1, "settled": 0})
+        stored = self.db.collection("furniture").document(item["id"]).get().to_dict()
+        self.assertEqual(stored["waitlist"], [])
+
+    def test_leave_waitlist(self):
+        item, _ = self.matched()
+        other_case = self.waiting()
+        self.join_waitlist(item["id"], other_case["id"], self.sw("sw-2"))
+        left = self.act(item["id"], "leave_waitlist", self.sw("sw-2"), "matched")
+        self.assertEqual(left.status_code, 200, left.get_json())
+        self.assertEqual(left.get_json()["waitlistLength"], 0)
+        self.assertEqual(self.client.get("/api/matches/waitlist", headers=self.sw("sw-2")).get_json(), [])
+
+    # ---------- Thank-you notes ----------
+
+    def delivered_item(self):
+        item, _ = self.in_delivery()
+        done = self.act(item["id"], "complete_delivery", self.sw(), "in_delivery")
+        self.assertEqual(done.status_code, 200, done.get_json())
+        return item
+
+    def thank(self, item_id, headers, message="Thank you, the children love it!"):
+        return self.client.post(
+            f"/api/furniture/{item_id}/thank-you", json={"message": message}, headers=headers
+        )
+
+    def test_thank_you_note_after_delivery(self):
+        item = self.delivered_item()
+        self.assertEqual(self.thank(item["id"], self.sw("sw-2")).status_code, 404)
+        self.assertEqual(self.thank(item["id"], self.sw(), message="  ").status_code, 400)
+        sent = self.thank(item["id"], self.sw())
+        self.assertEqual(sent.status_code, 201, sent.get_json())
+        self.assertEqual(sent.get_json()["organisation"], "Sunrise Charity")
+        again = self.thank(item["id"], self.sw())
+        self.assertEqual(again.status_code, 409)
+        self.assertIn("already", again.get_json()["error"])
+
+        received = self.client.get("/api/thank-you-notes", headers=self.owner()).get_json()
+        self.assertEqual([n["message"] for n in received], ["Thank you, the children love it!"])
+        self.assertEqual(self.client.get("/api/thank-you-notes", headers=self.as_user("donor-2", "donor")).get_json(), [])
+        donor = self.client.get(f"/api/furniture/{item['id']}", headers=self.owner()).get_json()
+        self.assertIn("thankYouSentAt", donor)
+        kinds = [(e.to_dict()["type"], e.to_dict()["toUid"]) for e in self.db.collection("notificationsOutbox").stream()]
+        self.assertIn(("thank_you", "donor-1"), kinds)
+
+    def test_no_thank_you_before_delivery(self):
+        item, _ = self.in_delivery()
+        response = self.thank(item["id"], self.sw())
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("error", response.get_json())
+
+    # ---------- Admin tools and weekly summaries ----------
+
+    def test_weekly_summary_is_queued_once_a_week(self):
+        from datetime import datetime, timezone
+
+        from app import jobs
+
+        self.matched()  # sw-1 has an open case with a match in progress
+        now = datetime.now(timezone.utc)
+        with self.app.app_context():
+            first = jobs.weekly_summaries(self.db, now)
+            again = jobs.weekly_summaries(self.db, now + timedelta(days=1))
+            next_week = jobs.weekly_summaries(self.db, now + timedelta(days=8))
+        self.assertEqual(first, {"queued": 1})
+        self.assertEqual(again, {"skipped": "not due"})
+        self.assertEqual(next_week, {"queued": 1})
+        summaries = [
+            e.to_dict() for e in self.db.collection("notificationsOutbox").stream()
+            if e.to_dict()["type"] == "weekly_summary"
+        ]
+        self.assertEqual({s["toUid"] for s in summaries}, {"sw-1"})
+        self.assertIn("1 match in progress", summaries[0]["text"])
+
+    def test_admin_stats_and_jobs(self):
+        self.matched()
+        self.assertEqual(self.client.get("/api/admin/stats", headers=self.sw()).status_code, 403)
+        stats = self.client.get("/api/admin/stats", headers=self.admin()).get_json()
+        self.assertEqual(stats["activeMatches"], 1)
+        self.assertEqual(stats["openCases"], 1)
+        ran = self.client.post("/api/admin/run-jobs", headers=self.admin())
+        self.assertEqual(ran.status_code, 200)
+        self.assertIn("lapse_overdue_matches", ran.get_json())
+
+    def test_admin_can_take_down_a_listing(self):
+        item = self.available()
+        no_reason = self.act(item["id"], "withdraw_listing", self.admin(), "available")
+        self.assertEqual(no_reason.status_code, 400)
+        done = self.act(item["id"], "withdraw_listing", self.admin(), "available", "Duplicate listing")
+        self.assertEqual(done.get_json()["status"], "withdrawn")
+        donor = self.client.get(f"/api/furniture/{item['id']}", headers=self.owner()).get_json()
+        self.assertEqual(donor["cancelKind"], "removed")
+        self.assertEqual(self.act(item["id"], "withdraw_listing", self.owner(), "withdrawn", "x").status_code, 403)
+
+    def test_run_jobs_needs_the_token_and_lapses_overdue_matches(self):
+        from datetime import datetime, timezone
+
+        item, _ = self.matched()
+        self.db.collection("furniture").document(item["id"]).update(
+            {"activeMatch.connectBy": datetime.now(timezone.utc) - timedelta(hours=1)}
+        )
+        self.assertEqual(self.client.post("/api/internal/run-jobs").status_code, 404)
+        self.app.config["INTERNAL_SCHEDULER_TOKEN"] = "secret"
+        try:
+            self.assertEqual(self.client.post("/api/internal/run-jobs").status_code, 401)
+            ran = self.client.post("/api/internal/run-jobs", headers={"X-Internal-Token": "secret"})
+            self.assertEqual(ran.get_json()["lapse_overdue_matches"], {"lapsed": [item["id"]]})
+        finally:
+            self.app.config["INTERNAL_SCHEDULER_TOKEN"] = None
 
 
 if __name__ == "__main__":

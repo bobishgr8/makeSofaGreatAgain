@@ -10,6 +10,8 @@ from .validation import today_sgt
 matching_bp = Blueprint("matching", __name__, url_prefix="/api/matches")
 
 SUGGESTION_LIMIT = 10
+# Items already held for another case that this case could queue for.
+WAITLIST_SUGGESTION_LIMIT = 5
 
 
 @matching_bp.get("")
@@ -64,4 +66,46 @@ def suggest_matches():
         suggestions.append({"furniture": lifecycle.view(item, g.user), **result})
 
     suggestions.sort(key=lambda suggestion: suggestion["score"], reverse=True)
-    return jsonify(suggestions[:SUGGESTION_LIMIT])
+
+    # Then items held for someone else that this case could take once they are
+    # free: offered as "join the waitlist" (Figma flow), after the available ones.
+    queued = []
+    taken = db.collection(lifecycle.COLLECTION).where(
+        "status", "in", list(lifecycle.ACTIVE_MATCH_STATUSES)
+    )
+    for document in taken.stream():
+        item = _item(document)
+        match = lifecycle.active_match(item)
+        if match.get("caseId") == case["id"] or match.get("socialWorkerId") == g.user["uid"]:
+            continue
+        if any(entry.get("caseId") == case["id"] for entry in lifecycle.waitlist(item)):
+            continue
+        if lifecycle.ineligible_reason(item, case, today, ignore_status=True):
+            continue
+        # Scored as it would be once it is free again.
+        result = score_match({**item, "status": "available"}, case, today)
+        if result is None:
+            continue
+        queued.append({"furniture": lifecycle.view(item, g.user), **result, "waitlist": True})
+    queued.sort(key=lambda suggestion: suggestion["score"], reverse=True)
+
+    return jsonify(suggestions[:SUGGESTION_LIMIT] + queued[:WAITLIST_SUGGESTION_LIMIT])
+
+
+@matching_bp.get("/waitlist")
+@require_auth({"social_worker", "admin"}, require_approval=True)
+def my_waitlist():
+    """The items the caller is queued for, with their place in the queue."""
+    query = get_db().collection(lifecycle.COLLECTION).where(
+        "waitlistUids", "array_contains", g.user["uid"]
+    )
+    out = []
+    for snapshot in query.limit(100).stream():
+        item = _item(snapshot)
+        view = lifecycle.view(item, g.user)
+        view["waitlistCaseIds"] = [
+            entry.get("caseId") for entry in lifecycle.waitlist(item)
+            if entry.get("socialWorkerId") == g.user["uid"]
+        ]
+        out.append(view)
+    return jsonify(out)

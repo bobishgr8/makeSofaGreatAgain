@@ -16,8 +16,16 @@ import {
 } from "../common/config";
 
 // The pick-up address and expected delivery date drive the donation's lifecycle
-// (status page, expiry), so admins can't hide them.
-type AlwaysShownField = "pickupAddress" | "expectedDeliveryDate";
+// (status page, expiry), and the PRD requires the postal code, the item's
+// details and the delivery-cost acknowledgement, so admins can't hide them.
+type AlwaysShownField =
+  | "pickupAddress"
+  | "postalCode"
+  | "expectedDeliveryDate"
+  | "brand"
+  | "modelNumber"
+  | "details"
+  | "deliveryCostAcknowledged";
 type FormFieldKey = Exclude<keyof Draft, AlwaysShownField> | "photos";
 
 export type FormConfig = Record<FormFieldKey, boolean>;
@@ -64,6 +72,7 @@ type ServerFormConfig = {
   initialDraft?: Draft;
   formFields?: Partial<FormConfig>;
   logisticsEstimates?: LogisticsEstimate[];
+  helpWhatsapp?: string;
 };
 
 type FormConfigContextValue = {
@@ -78,6 +87,8 @@ type FormConfigContextValue = {
   neighbourhoods: string[];
   initialDraft: Draft;
   logisticsEstimates: LogisticsEstimate[];
+  // The team's WhatsApp number for the Help page; "" when not configured.
+  helpWhatsapp: string;
   configLoading: boolean;
 };
 
@@ -95,6 +106,7 @@ export function FormConfigProvider({ children }: { children: ReactNode }) {
     defaultInitialDraft(),
   );
   const [logisticsEstimates, setLogisticsEstimates] = useState<LogisticsEstimate[]>([]);
+  const [helpWhatsapp, setHelpWhatsapp] = useState("");
   const [configLoading, setConfigLoading] = useState(true);
 
   useEffect(() => {
@@ -103,6 +115,7 @@ export function FormConfigProvider({ children }: { children: ReactNode }) {
     api<ServerFormConfig>("/api/config")
       .then((data) => {
         if (!mounted) return;
+        if (data.helpWhatsapp) setHelpWhatsapp(data.helpWhatsapp);
         if (data.categoryLabels) setCategoryLabels(data.categoryLabels);
         if (data.neighbourhoods) setNeighbourhoods(data.neighbourhoods);
         if (data.initialDraft) setInitialDraft(data.initialDraft);
@@ -153,6 +166,7 @@ export function FormConfigProvider({ children }: { children: ReactNode }) {
         neighbourhoods,
         initialDraft,
         logisticsEstimates,
+        helpWhatsapp,
         configLoading,
       }}
     >

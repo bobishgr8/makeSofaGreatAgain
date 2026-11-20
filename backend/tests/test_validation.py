@@ -3,7 +3,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
-from validation import validate_donor_profile, validate_furniture
+from validation import clean_postal_code, parse_delivery_date, validate_donor_profile, validate_furniture
+from datetime import date
 
 
 def valid_furniture(**overrides):
@@ -129,6 +130,51 @@ class DonorProfileValidationTests(unittest.TestCase):
     def test_rejects_a_display_name_over_the_length_cap(self):
         errors = validate_donor_profile({"displayName": "x" * 200})
         self.assertTrue(any("Contact name" in error for error in errors))
+
+
+
+class DonorProfileExtraTests(unittest.TestCase):
+    def test_address_and_consent(self):
+        self.assertEqual(
+            validate_donor_profile({"address": "1 Road", "consent": {"contactAllowed": True}}), []
+        )
+        self.assertTrue(validate_donor_profile({"address": "x" * 201}))
+        self.assertTrue(validate_donor_profile({"address": 5}))
+        self.assertTrue(validate_donor_profile({"consent": "yes"}))
+        self.assertTrue(validate_donor_profile({"consent": {"contactAllowed": "yes"}}))
+
+
+class DonationFormRuleTests(unittest.TestCase):
+    def test_prd_conditions_and_old_ones_are_accepted(self):
+        for condition in ("like_new", "visible_wear", "minor_defect", "requires_repair", "excellent"):
+            self.assertEqual(validate_furniture(valid_furniture(condition=condition)), [])
+
+    def test_details_are_small_and_flat(self):
+        self.assertEqual(validate_furniture(valid_furniture(details={"halal": "Halal", "seats": 3})), [])
+        self.assertTrue(validate_furniture(valid_furniture(details=["halal"])))
+        self.assertTrue(validate_furniture(valid_furniture(details={"x": {"y": 1}})))
+        self.assertTrue(validate_furniture(valid_furniture(details={"x": "y" * 501})))
+        self.assertTrue(validate_furniture(valid_furniture(details={str(i): "a" for i in range(21)})))
+
+    def test_blank_optional_fields_are_not_errors(self):
+        blank = valid_furniture(
+            conditionNotes="", dimensionsCm={"width": 0, "depth": 0, "height": 0},
+            collection={"floor": "", "deliveryArea": ""},
+        )
+        self.assertEqual(validate_furniture(blank), [])
+
+    def test_collect_by_date_minimum(self):
+        today = date(2026, 11, 21)
+        self.assertEqual(parse_delivery_date("2026-11-24", today, 3), "2026-11-24")
+        with self.assertRaises(ValueError):
+            parse_delivery_date("2026-11-23", today, 3)
+        self.assertEqual(parse_delivery_date("2026-11-21", today), "2026-11-21")
+
+    def test_postal_code(self):
+        self.assertEqual(clean_postal_code(" 529 889 "), "529889")
+        for bad in ("52988", "5298890", "abcdef", None):
+            with self.assertRaises(ValueError):
+                clean_postal_code(bad)
 
 
 if __name__ == "__main__":

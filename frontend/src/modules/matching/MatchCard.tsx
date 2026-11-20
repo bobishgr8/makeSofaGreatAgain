@@ -37,7 +37,7 @@ export default function MatchCard({
       : null;
 
   async function request() {
-    const failure = await run("accept_match", { caseId });
+    const failure = await run(suggestion.waitlist ? "join_waitlist" : "accept_match", { caseId });
     if (failure) onFailed(failure);
   }
 
@@ -54,12 +54,6 @@ export default function MatchCard({
       <div className="match-card-header">
         <div>
           {rank && <span className="muted-text">Recommendation #{rank}</span>}
-
-          {showCase && (
-            <span className="muted-text">
-              Case {current.caseId.slice(0, 8)}
-            </span>
-          )}
 
           <h2>{item.title}</h2>
         </div>
@@ -109,9 +103,28 @@ export default function MatchCard({
         </div>
       )}
 
+      {suggestion.waitlist && (
+        <p className="muted-text">
+          Already requested for another household
+          {item.waitlistLength ? ` · ${item.waitlistLength} waiting` : ""}. Join
+          the waitlist and your case is matched automatically if it becomes free.
+        </p>
+      )}
+
       <div className="actions">
         {/* The button comes from the server's allowedActions. */}
-        {item.allowedActions.includes("accept_match") && (
+        {suggestion.waitlist && item.allowedActions.includes("join_waitlist") && (
+          <Button
+            type="button"
+            disabled={pending || !canRequest}
+            title={canRequest ? undefined : "Save your organisation and WhatsApp number first"}
+            onClick={request}
+          >
+            {pending ? "Joining..." : "Join waitlist"}
+          </Button>
+        )}
+
+        {!suggestion.waitlist && item.allowedActions.includes("accept_match") && (
           <Button
             type="button"
             disabled={pending || !canRequest}
@@ -122,12 +135,15 @@ export default function MatchCard({
           </Button>
         )}
 
-        <Link
-          className="button secondary"
-          to={`/furniture/${item.id}`}
-        >
-          Review furniture
-        </Link>
+        {/* A held item's page is only open to its parties. */}
+        {!suggestion.waitlist && (
+          <Link
+            className="button secondary"
+            to={`/furniture/${item.id}`}
+          >
+            Review furniture
+          </Link>
+        )}
       </div>
     </Card>
   );

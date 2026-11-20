@@ -29,45 +29,22 @@ export default function ProtectedRoute({
       }
 
       try {
-        const tokenResult =
-          await user.getIdTokenResult();
+        // Claims (role, approval) live in the ID token, which Firebase caches
+        // for up to an hour. When the cached token says no, fetch a fresh one
+        // once: an admin may just have assigned the role or approved the account.
+        const allowed = (claims: Record<string, unknown>) => {
+          const role = claims.role as string | undefined;
+          const approval = claims.approval as string | undefined;
+          if (roles && roles.length > 0 && (!role || !roles.includes(role))) {
+            return false;
+          }
+          return !(requireApproval && role === "social_worker" && approval !== "approved");
+        };
 
-        const role =
-          tokenResult.claims.role as string | undefined;
+        let ok = allowed((await user.getIdTokenResult()).claims);
+        if (!ok) ok = allowed((await user.getIdTokenResult(true)).claims);
 
-        const approval =
-          tokenResult.claims.approval as string | undefined;
-
-        console.log("===== ROUTE AUTH =====");
-        console.log("UID:", user.uid);
-        console.log("Role:", role);
-        console.log("Approval:", approval);
-        console.log("Allowed roles:", roles);
-        console.log("======================");
-
-        // Check role
-        if (
-          roles &&
-          roles.length > 0 &&
-          (!role || !roles.includes(role))
-        ) {
-          if (mounted) setAuthorized(false);
-          return;
-        }
-
-        // Social workers may additionally require admin approval
-        if (
-          requireApproval &&
-          role === "social_worker" &&
-          approval !== "approved"
-        ) {
-          if (mounted) setAuthorized(false);
-          return;
-        }
-
-        if (mounted) {
-          setAuthorized(true);
-        }
+        if (mounted) setAuthorized(ok);
       } catch (err) {
         console.error(
           "Authorization check failed:",

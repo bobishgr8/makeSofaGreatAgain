@@ -96,9 +96,8 @@ class DecideTests(unittest.TestCase):
                         listing = item(status)
                         rule = TRANSITIONS.get((status, action))
                         may_act = lifecycle.is_party(user, listing) or (
-                            action in lifecycle.OPEN_ACTIONS
-                            and user["role"] == "social_worker"
-                            and status == "available"
+                            user["role"] == "social_worker"
+                            and status in lifecycle.OPEN_ACTIONS.get(action, ())
                         )
                         in_table = rule is not None and user["role"] in rule.roles
                         # rematch and arrange_delivery need a connection, a
@@ -108,6 +107,8 @@ class DecideTests(unittest.TestCase):
                             "rematch", "lapse_match", "arrange_delivery",
                             "confirm_logistics", "rearrange_logistics",
                         )
+                        if action in ("join_waitlist", "leave_waitlist") and may_act and in_table:
+                            continue  # their own guards are covered by WaitlistTests
                         try:
                             decision = lifecycle.decide(
                                 listing, action, user, payload(status, **LOGISTICS), NOW,
@@ -464,7 +465,10 @@ class DeliveryTests(unittest.TestCase):
                 ["complete_delivery", "cancel_delivery"],
             )
             self.assertEqual(offered(delivering("delivered", True), user), [])
-        self.assertEqual(offered(delivering("in_delivery", True), OTHER_SOCIAL_WORKER), [])
+        # Another social worker can only queue for it.
+        self.assertEqual(
+            offered(delivering("in_delivery", True), OTHER_SOCIAL_WORKER), ["join_waitlist"]
+        )
 
     def test_both_sides_see_the_proposal_and_the_stage(self):
         private = {"pickupAddress": "88 Tampines Road", "deliveryAddress": "12 Bedok North Ave 4"}
@@ -497,7 +501,7 @@ class AllowedActionsTests(unittest.TestCase):
             lifecycle.allowed_actions(item("pending_review"), ADMIN), ["approve", "reject"]
         )
         self.assertEqual(
-            lifecycle.allowed_actions(item("available"), ADMIN), ["flag_for_review"]
+            lifecycle.allowed_actions(item("available"), ADMIN), ["flag_for_review", "withdraw_listing"]
         )
         self.assertEqual(lifecycle.allowed_actions(item("matched"), ADMIN), ["release_match"])
 
@@ -506,7 +510,10 @@ class AllowedActionsTests(unittest.TestCase):
         self.assertEqual(lifecycle.allowed_actions(item(), SOCIAL_WORKER), [])
         self.assertEqual(lifecycle.allowed_actions(item(), None), [])
         self.assertEqual(lifecycle.allowed_actions(item("withdrawn"), OWNER), [])
-        self.assertEqual(lifecycle.allowed_actions(item("matched"), OTHER_SOCIAL_WORKER), [])
+        # Another social worker can only queue for a matched item.
+        self.assertEqual(
+            lifecycle.allowed_actions(item("matched"), OTHER_SOCIAL_WORKER), ["join_waitlist"]
+        )
 
     def test_social_worker_can_request_an_available_item(self):
         self.assertEqual(
@@ -525,6 +532,113 @@ class AllowedActionsTests(unittest.TestCase):
             ["rematch", "cancel_donation", "arrange_delivery"],
         )
         self.assertEqual(lifecycle.allowed_actions(connected, SOCIAL_WORKER), ["release_match"])
+
+
+class WaitlistTests(unittest.TestCase):
+    def other_case(self, **fields):
+        return case(id="case-2", socialWorkerId=OTHER_SOCIAL_WORKER["uid"], **fields)
+
+    def join(self, listing, user=OTHER_SOCIAL_WORKER, context=None):
+        return lifecycle.decide(
+            listing, "join_waitlist", user, payload(listing["status"], caseId="case-2"), NOW,
+            context or ctx(case=self.other_case()),
+        )
+
+    def test_joining_queues_the_case_without_changing_the_status(self):
+        decision = self.join(item("matched"))
+        self.assertEqual(decision.to, "matched")
+        self.assertNotIn("status", decision.item_updates)
+        self.assertEqual(decision.item_updates["waitlist"][0]["caseId"], "case-2")
+        self.assertEqual(decision.item_updates["waitlistUids"], ["sw-2"])
+        self.assertTrue(decision.item_updates["waitlistOpen"])
+        self.assertEqual(decision.notify_uids, [])
+        self.assertIsNone(decision.case_updates)
+
+    def test_join_checks_like_a_request(self):
+        listing = item("matched")
+        with self.assertRaises(LifecycleError) as pending:
+            self.join(listing, {**OTHER_SOCIAL_WORKER, "approval": "pending"})
+        self.assertEqual(pending.exception.status_code, 403)
+        with self.assertRaises(LifecycleError) as wrong_need:
+            self.join(listing, context=ctx(case=self.other_case(needs=[{"category": "bed"}])))
+        self.assertEqual(wrong_need.exception.status_code, 400)
+        with self.assertRaises(LifecycleError) as not_theirs:
+            self.join(listing, context=ctx(case=case(id="case-2")))
+        self.assertEqual(not_theirs.exception.status_code, 404)
+        with self.assertRaises(LifecycleError) as own_case:
+            lifecycle.decide(
+                listing, "join_waitlist", SOCIAL_WORKER, payload("matched", caseId="case-1"), NOW, ctx()
+            )
+        self.assertEqual(own_case.exception.status_code, 409)
+
+    def test_cannot_queue_twice_or_past_the_limit(self):
+        queued = item("matched", waitlist=[{"caseId": "case-2", "socialWorkerId": "sw-2"}])
+        with self.assertRaises(LifecycleError) as twice:
+            self.join(queued)
+        self.assertEqual(twice.exception.status_code, 409)
+        full = item("matched", waitlist=[
+            {"caseId": f"c{i}", "socialWorkerId": f"x{i}"} for i in range(lifecycle.MAX_WAITLIST)
+        ])
+        self.assertNotIn("join_waitlist", lifecycle.allowed_actions(full, OTHER_SOCIAL_WORKER))
+
+    def test_position_and_leaving(self):
+        queued = item("to_deliver", waitlist=[
+            {"caseId": "case-9", "socialWorkerId": "sw-9", "organisation": "A"},
+            {"caseId": "case-2", "socialWorkerId": "sw-2", "organisation": "B"},
+        ])
+        view = lifecycle.view(queued, OTHER_SOCIAL_WORKER)
+        self.assertEqual((view["waitlistLength"], view["waitlistPosition"]), (2, 2))
+        self.assertNotIn("waitlist", view)  # who else waits stays with the parties
+        self.assertEqual(lifecycle.allowed_actions(queued, OTHER_SOCIAL_WORKER), ["leave_waitlist"])
+        left = lifecycle.decide(queued, "leave_waitlist", OTHER_SOCIAL_WORKER, payload("to_deliver"), NOW)
+        self.assertEqual([e["caseId"] for e in left.item_updates["waitlist"]], ["case-9"])
+        donor_view = lifecycle.view(queued, OWNER)
+        self.assertEqual([w["organisation"] for w in donor_view["waitlist"]], ["A", "B"])
+
+    def test_a_match_from_the_waitlist_leaves_it(self):
+        listing = item("available", waitlist=[
+            {"caseId": "case-1", "socialWorkerId": "sw-1"},
+            {"caseId": "case-2", "socialWorkerId": "sw-2"},
+        ])
+        decision = accept(listing)
+        self.assertEqual([e["caseId"] for e in decision.item_updates["waitlist"]], ["case-2"])
+
+    def test_eligibility_can_ignore_the_status(self):
+        today = NOW.date()
+        self.assertIsNotNone(lifecycle.ineligible_reason(item("matched"), case(), today))
+        self.assertIsNone(lifecycle.ineligible_reason(item("matched"), case(), today, ignore_status=True))
+
+
+class OwnerRoleTests(unittest.TestCase):
+    """Whoever listed the item runs the donor's steps, whatever their account role."""
+
+    def test_admin_who_listed_an_item_runs_the_donor_steps(self):
+        listing = item("matched", donorId=ADMIN["uid"])
+        self.assertEqual(
+            lifecycle.allowed_actions(listing, ADMIN),
+            ["connect", "cancel_donation", "release_match"],
+        )
+        decision = lifecycle.decide(listing, "connect", ADMIN, payload("matched"), NOW, ctx())
+        self.assertEqual(decision.to, "matched")
+        self.assertIn("edit", lifecycle.allowed_actions(item("available", donorId=ADMIN["uid"]), ADMIN))
+
+    def test_social_worker_who_listed_an_item_acts_only_as_its_donor(self):
+        listing = delivering(proposed=True, donorId=OTHER_SOCIAL_WORKER["uid"])
+        self.assertTrue(lifecycle.is_party(OTHER_SOCIAL_WORKER, listing))
+        self.assertNotIn("confirm_logistics", lifecycle.allowed_actions(listing, OTHER_SOCIAL_WORKER))
+        with self.assertRaises(LifecycleError) as raised:
+            lifecycle.decide(
+                listing, "confirm_logistics", OTHER_SOCIAL_WORKER, payload("to_deliver"), NOW, ctx()
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+        # The matched social worker still confirms.
+        self.assertIn("confirm_logistics", lifecycle.allowed_actions(listing, SOCIAL_WORKER))
+
+    def test_admin_who_listed_an_item_can_edit_it(self):
+        updates, _ = lifecycle.plan_edit(
+            item("pending_review", donorId=ADMIN["uid"]), ADMIN, {"title": "Sofa bed"}, NOW
+        )
+        self.assertEqual(updates["title"], "Sofa bed")
 
 
 class EditTests(unittest.TestCase):
@@ -621,12 +735,22 @@ class ViewTests(unittest.TestCase):
         self.assertTrue(summary["connected"])
         self.assertFalse(summary["overdue"])
 
+    def test_admin_can_take_down_a_live_listing(self):
+        with self.assertRaises(LifecycleError):
+            lifecycle.decide(item("available"), "withdraw_listing", ADMIN, payload("available", reason=""), NOW)
+        decision = lifecycle.decide(item("available"), "withdraw_listing", ADMIN, payload("available"), NOW)
+        self.assertEqual(decision.to, "withdrawn")
+        self.assertEqual(decision.notify_uids, ["donor-1"])
+        self.assertIn("withdraw_listing", lifecycle.allowed_actions(item("available"), ADMIN))
+        self.assertNotIn("withdraw_listing", lifecycle.allowed_actions(item("available"), OWNER))
+
     def test_cancel_kind(self):
         def kind(**fields):
             return lifecycle.view(item(**fields), OWNER)["cancelKind"]
 
         self.assertEqual(kind(status="rejected", cancelledBy="admin-1"), "rejected")
         self.assertEqual(kind(status="withdrawn", cancelledBy="donor-1", cancelReason="no_match"), "donor")
+        self.assertEqual(kind(status="withdrawn", cancelledBy="admin-1", cancelReason="Duplicate"), "removed")
         self.assertEqual(kind(status="withdrawn", cancelledBy="system", cancelReason="no_match"), "no_match")
         self.assertEqual(kind(status="withdrawn", cancelledBy="system", cancelReason="no_connect"), "no_connect")
         self.assertNotIn("cancelKind", lifecycle.view(item("available"), OWNER))

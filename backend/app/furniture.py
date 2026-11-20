@@ -7,11 +7,13 @@ from . import lifecycle
 from .auth import optional_user, require_auth
 from .firebase import get_db
 from .validation import (
+    clean_postal_code,
     clean_text,
     parse_delivery_date,
     public_patch,
     require_fields,
     today_sgt,
+    validate_furniture,
 )
 from .whatsapp import notify_new_listing
 
@@ -20,12 +22,15 @@ COLLECTION = lifecycle.COLLECTION
 
 # "status" is deliberately absent: only lifecycle.py changes it.
 CREATE_FIELDS = {
-    "title", "category", "subcategory", "description", "condition",
+    "title", "category", "subcategory", "brand", "modelNumber", "details", "description", "condition",
     "conditionNotes", "dimensionsCm", "quantity", "photos", "location",
     "collection", "safety", "expectedDeliveryDate",
 }
 EDITABLE = {"title", "condition", "conditionNotes", "dimensionsCm", "expectedDeliveryDate"}
 PICKUP_ADDRESS_MAX_LEN = 200
+# The collect-by date must be at least this many days away (PRD EPIC 1).
+# Mirrors MIN_COLLECTION_DAYS in frontend/src/common/donationSpec.ts.
+MIN_COLLECTION_DAYS = 3
 
 
 @furniture_bp.errorhandler(lifecycle.LifecycleError)
@@ -54,7 +59,7 @@ def _match_contact(db, item, user):
     if (
         not social_worker_id
         or not lifecycle.is_party(user, item)
-        or user.get("role") not in ("donor", "admin")
+        or not (user.get("role") == "admin" or lifecycle.is_owner(user, item))
     ):
         return None
     return db.collection(lifecycle.PROFILES).document(social_worker_id).get().to_dict()
@@ -70,9 +75,16 @@ def _validated_pickup_address(value):
     return address
 
 
+def _validated_postal_code(value):
+    try:
+        return clean_postal_code(value)
+    except ValueError as error:
+        abort(400, description=str(error))
+
+
 def _validated_delivery_date(value):
     try:
-        return parse_delivery_date(value, today_sgt())
+        return parse_delivery_date(value, today_sgt(), MIN_COLLECTION_DAYS)
     except ValueError as error:
         abort(400, description=str(error))
 
@@ -84,9 +96,10 @@ def list_furniture():
     browse available items without signing in. Only available items and only public
     fields are returned; admins see every status through /admin/all.
     """
+    user = optional_user()
     query = get_db().collection(COLLECTION).where("status", "==", "available")
     return jsonify([
-        lifecycle.view(_item(document), None)
+        lifecycle.view(_item(document), user)
         for document in query.limit(100).stream()
     ])
 
@@ -124,15 +137,22 @@ def create_furniture():
     data = request.get_json(force=True)
     require_fields(data, [
         "title", "category", "condition", "location", "collection",
-        "expectedDeliveryDate", "pickupAddress",
+        "expectedDeliveryDate", "pickupAddress", "postalCode",
     ])
+    if data.get("deliveryCostAcknowledged") is not True:
+        abort(400, description="Please confirm you will cover the delivery cost")
     item = public_patch(data, CREATE_FIELDS)
+    errors = validate_furniture(item)
+    if errors:
+        abort(400, description="; ".join(errors))
     item["expectedDeliveryDate"] = _validated_delivery_date(data["expectedDeliveryDate"])
     pickup_address = _validated_pickup_address(data["pickupAddress"])
+    private = {"pickupAddress": pickup_address, "postalCode": _validated_postal_code(data["postalCode"])}
 
     now = datetime.now(timezone.utc)
     item.update({
         "donorId": g.user["uid"],
+        "deliveryCostAcknowledged": True,
         "status": lifecycle.INITIAL_STATUS,
         "submittedAt": now,
         "statusChangedAt": now,
@@ -144,7 +164,7 @@ def create_furniture():
     reference = db.collection(COLLECTION).document()
     batch = db.batch()
     batch.set(reference, item)
-    batch.set(_private_ref(reference), {"pickupAddress": pickup_address})
+    batch.set(_private_ref(reference), private)
     batch.set(
         reference.collection(lifecycle.HISTORY).document(),
         lifecycle.history_entry(None, lifecycle.INITIAL_STATUS, "create", g.user, now),
@@ -156,7 +176,7 @@ def create_furniture():
     batch.commit()
 
     created = {**item, "id": reference.id}
-    return jsonify(lifecycle.view(created, g.user, {"pickupAddress": pickup_address})), 201
+    return jsonify(lifecycle.view(created, g.user, private)), 201
 
 
 @furniture_bp.get("/<item_id>")
@@ -181,15 +201,18 @@ def get_furniture(item_id):
 
 
 @furniture_bp.patch("/<item_id>")
-@require_auth({"donor"})
+@require_auth({"donor", "admin", "social_worker"})
 def update_furniture(item_id):
     body = request.get_json(force=True) or {}
+    # Field limits are checked in lifecycle.plan_edit, after ownership and status.
     changes = public_patch(body, EDITABLE)
     if "expectedDeliveryDate" in changes:
         changes["expectedDeliveryDate"] = _validated_delivery_date(changes["expectedDeliveryDate"])
     private_changes = {}
     if "pickupAddress" in body:
         private_changes["pickupAddress"] = _validated_pickup_address(body["pickupAddress"])
+    if "postalCode" in body:
+        private_changes["postalCode"] = _validated_postal_code(body["postalCode"])
     if not changes and not private_changes:
         abort(400, description="Nothing to update")
 
@@ -206,6 +229,9 @@ def run_action(item_id, action):
     db = get_db()
     reference = db.collection(COLLECTION).document(item_id)
     item, changed = lifecycle.apply_action(db, reference, action, g.user, payload)
+    if changed and lifecycle.waitlist(item):
+        lifecycle.settle_waitlist(db, reference, item)
+        item = _item(reference.get())
 
     private = _read_private(reference) if lifecycle.is_party(g.user, item) else None
     result = lifecycle.view(item, g.user, private, _match_contact(db, item, g.user))

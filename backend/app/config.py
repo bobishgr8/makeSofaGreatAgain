@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from .auth import require_auth
 from .firebase import get_db
@@ -35,6 +35,21 @@ FORM_FIELD_KEYS = {
 }
 
 FORM_FIELDS_DOC = ("platformConfig", "formFields")
+
+# The categories the donor and case forms pick from (served as categoryLabels by
+# GET /api/config), with the wording used in WhatsApp announcements.
+# PRD EPIC 1 lists these eight; per-category questions live in
+# frontend/src/common/donationSpec.ts.
+CATEGORY_LABELS = {
+    "washing_machine": "washing machine / dryer",
+    "fridge": "fridge",
+    "sofa": "sofa",
+    "table": "table / study desk",
+    "chair": "chair",
+    "bed": "bed",
+    "storage": "wardrobe / cabinet / bookshelf",
+    "other": "furniture item",
+}
 
 # Each one needs a centre in scoring.NEIGHBOURHOOD_CENTROIDS.
 NEIGHBOURHOODS = [
@@ -95,19 +110,15 @@ def get_form_fields():
 @config_bp.get("")
 def get_config():
     # Server-authoritative UI configuration and sensible defaults.
-    category_labels = {
-        "sofa": "sofa",
-        "table": "table",
-        "chair": "chair",
-        "bed": "bed",
-        "storage": "storage unit",
-        "other": "furniture item",
-    }
+    category_labels = CATEGORY_LABELS
 
     initial_draft = {
         "title": "",
         "category": "",
         "subcategory": "",
+        "brand": "",
+        "modelNumber": "",
+        "details": {},
         "condition": "",
         "conditionNotes": "",
         "quantity": 1,
@@ -116,6 +127,7 @@ def get_config():
         "heightCm": "",
         "neighbourhood": "",
         "pickupAddress": "",
+        "postalCode": "",
         "expectedDeliveryDate": "",
         "floor": "",
         "hasLift": "",
@@ -132,6 +144,7 @@ def get_config():
         "petHousehold": False,
         "smokingHousehold": False,
         "contactConsent": False,
+        "deliveryCostAcknowledged": False,
     }
 
     return jsonify({
@@ -140,6 +153,8 @@ def get_config():
         "initialDraft": initial_draft,
         "formFields": get_form_fields(),
         "logisticsEstimates": LOGISTICS_ESTIMATES,
+        # The team's WhatsApp number for the Help page, digits only (HELP_WHATSAPP).
+        "helpWhatsapp": "".join(ch for ch in (current_app.config.get("HELP_WHATSAPP") or "") if ch.isdigit()),
     })
 
 

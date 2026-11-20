@@ -23,6 +23,9 @@ import FurnitureDetailsPage from "../modules/furniture/FurnitureDetailsPage";
 import MatchList from "../modules/matching/MatchList";
 
 import AdminDashboard from "../modules/admin/AdminDashboard";
+import HelpPage from "../modules/help/HelpPage";
+import ProfilePage from "../modules/profile/ProfilePage";
+import ThanksPage from "../modules/thanks/ThanksPage";
 
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -156,6 +159,26 @@ export function AppRouter() {
       <Route
         path="/furniture/:id"
         element={<FurnitureDetailsPage />}
+      />
+
+      <Route path="/help" element={<HelpPage />} />
+
+      <Route
+        path="/thanks"
+        element={
+          <ProtectedRoute roles={["donor", "admin"]}>
+            <ThanksPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute roles={["donor", "social_worker", "admin"]}>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
       />
 
       {/* Admin */}

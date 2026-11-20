@@ -1,12 +1,49 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { AppRouter } from "./router";
 import { FormConfigProvider } from "./FormConfigContext";
-import { useAuth } from "./AuthProvider";
+import { useAuth, type Role } from "./AuthProvider";
 import { useEffect } from "react";
 import logo from "../assets/logo.png";
 
+// What each kind of visitor can reach (the Figma tab bars: donor Donate /
+// Status / Thanks / Help, social worker Furniture List / Status / Help).
+// Routes still check roles themselves; this only decides what is shown.
+const NAV: Record<Role | "guest" | "signedIn", Array<[string, string]>> = {
+  guest: [["/furniture", "Furniture"], ["/wishlist", "Wishlist"], ["/donate", "Donate"], ["/help", "Help"]],
+  signedIn: [["/furniture", "Furniture"], ["/wishlist", "Wishlist"], ["/help", "Help"]],
+  donor: [
+    ["/donate", "Donate"],
+    ["/donor", "Your donations"],
+    ["/thanks", "Thanks"],
+    ["/help", "Help"],
+    ["/profile", "Profile"],
+  ],
+  social_worker: [
+    ["/workspace", "Your cases"],
+    ["/matches", "Furniture"],
+    ["/help", "Help"],
+    ["/profile", "Profile"],
+  ],
+  admin: [
+    ["/furniture", "Furniture"],
+    ["/donate", "Donate"],
+    ["/donor", "Your donations"],
+    ["/workspace", "Social work"],
+    ["/admin", "Admin"],
+    ["/help", "Help"],
+  ],
+};
+
 export default function App() {
-  const { user, logout } = useAuth();
+  const { user, role, logout, refreshClaims } = useAuth();
+  const location = useLocation();
+
+  // A new account gets its role just after signing up; pick it up on the next page.
+  useEffect(() => {
+    if (user && !role) void refreshClaims();
+  }, [user, role, location.pathname, refreshClaims]);
+
+  const links = NAV[role ?? (user ? "signedIn" : "guest")];
   const logoSrc = logo;
   // The source asset is a wide wordmark lockup, not a square icon — using it
   // as-is would render illegibly small in a browser tab, so leave the
@@ -41,13 +78,12 @@ export default function App() {
             </>
           )}
         </Link>
-        <nav>
-          <NavLink to="/furniture">Furniture</NavLink>
-          <NavLink to="/wishlist">Wishlist</NavLink>
-          <NavLink to="/donate">Donate</NavLink>
-          <NavLink to="/donor">Your donations</NavLink>
-          <NavLink to="/workspace">Social work</NavLink>
-          <NavLink to="/admin">Admin</NavLink>
+        <nav aria-label="Main">
+          {links.map(([to, label]) => (
+            <NavLink key={to} to={to}>
+              {label}
+            </NavLink>
+          ))}
         </nav>
         {user ? (
           <button className="link-button" onClick={logout}>

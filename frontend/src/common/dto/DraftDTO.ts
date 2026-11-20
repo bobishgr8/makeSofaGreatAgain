@@ -2,6 +2,10 @@ export type Draft = {
   title: string;
   category: string;
   subcategory: string;
+  brand: string;
+  modelNumber: string;
+  // Answers to the per-category questions (common/donationSpec.ts).
+  details: Record<string, string>;
   condition: string;
   conditionNotes: string;
   quantity: number;
@@ -10,6 +14,7 @@ export type Draft = {
   heightCm: string;
   neighbourhood: string;
   pickupAddress: string;
+  postalCode: string;
   expectedDeliveryDate: string;
   floor: string;
   hasLift: string;
@@ -26,4 +31,5 @@ export type Draft = {
   petHousehold: boolean;
   smokingHousehold: boolean;
   contactConsent: boolean;
+  deliveryCostAcknowledged: boolean;
 };

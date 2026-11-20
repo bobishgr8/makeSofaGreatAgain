@@ -12,4 +12,6 @@ export type Suggestion = {
   reasons: string[];
   // True on the donor's delivery date: the last day for donation.
   urgent?: boolean;
+  // Already held for another case: this case can join its waitlist instead.
+  waitlist?: boolean;
 };

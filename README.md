@@ -81,7 +81,13 @@ POST               /api/furniture/:id/actions/:action
 GET/POST           /api/cases
 GET/PATCH/DELETE   /api/cases/:id
 GET                /api/matches
-GET                /api/matches/suggestions?caseId=
+GET                /api/matches/suggestions?caseId=   (available items, then held ones with waitlist: true)
+GET                /api/matches/waitlist
+POST               /api/furniture/:id/thank-you
+GET                /api/thank-you-notes
+GET                /api/admin/stats
+POST               /api/admin/run-jobs
+POST               /api/internal/run-jobs              (X-Internal-Token)
 ```
 
 Matching ranks the available furniture for one case on what drives logistics cost: lift access (yes/no at pickup and at delivery), proximity (km between neighbourhood centres), dimensions (the item must fit the space the case describes) and urgency (days left before the donor's delivery date). Weights depend on the item: the bulkier it is (by category and size), the more lift access counts and the less distance does. `backend/app/scoring.py` holds the score; `lifecycle.ineligible_reason` is the one definition of which items a case can take. Suggestions are computed on each request and never stored.

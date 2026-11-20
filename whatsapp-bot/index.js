@@ -13,7 +13,9 @@ const PORT = process.env.PORT || 4001;
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 const GROUP_JID = process.env.GROUP_JID || "";
 const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
-const DONATION_FORM_URL = `${WEB_ORIGIN}/furniture/new`;
+const DONATION_FORM_URL = `${WEB_ORIGIN}/donate`;
+// Who to talk to for help (EPIC 13). Digits in international format, e.g. 6591234567.
+const HELP_WHATSAPP = (process.env.HELP_WHATSAPP || "").replace(/[^0-9]/g, "");
 
 if (!INTERNAL_SECRET) {
   console.error("INTERNAL_SECRET is not set. Refusing to start.");
@@ -21,6 +23,19 @@ if (!INTERNAL_SECRET) {
 }
 
 const logger = pino({ level: process.env.LOG_LEVEL || "silent" });
+
+// The welcome menus from the Figma flow (donor: Donate Furniture / Track Status;
+// social worker: Find Specific Furniture / Check Status / View All Furniture /
+// Get Help). Baileys cannot send reliable buttons, so people reply with a
+// number and get a link to the right page of the web app.
+const MENU = [
+  { key: "1", label: "Donate furniture", path: "/donate", intro: "Thanks for wanting to donate! Fill in this short form to list your item:" },
+  { key: "2", label: "Track my donations", path: "/donor", intro: "Here is the status of your donations:" },
+  { key: "3", label: "Find furniture for a household (social workers)", path: "/cases/new", intro: "Tell us what the household needs and we will recommend furniture:" },
+  { key: "4", label: "Check my requests (social workers)", path: "/workspace", intro: "Here are your cases and requests:" },
+  { key: "5", label: "View all furniture", path: "/furniture", intro: "Here is all the furniture available right now:" },
+  { key: "6", label: "Get help", path: null, intro: null },
+];
 
 const DONATION_KEYWORDS = [
   "donate",
@@ -36,19 +51,45 @@ const DONATION_KEYWORDS = [
   "bed frame",
 ];
 
-function looksLikeDonationIntent(text) {
-  const lower = text.toLowerCase();
-  return DONATION_KEYWORDS.some((keyword) => lower.includes(keyword));
+function menuText() {
+  return [
+    "Hi there, welcome to Refurbish! 👋",
+    "We connect donated furniture with families and community organisations in need.",
+    "",
+    "What would you like to do? Reply with a number:",
+    ...MENU.map((option) => `${option.key}. ${option.label}`),
+  ].join("\n");
 }
 
-function donationReplyText() {
-  return (
-    "Hi! Thanks for wanting to donate furniture.\n\n" +
-    "Please fill in this short form to list your item:\n" +
-    `${DONATION_FORM_URL}\n\n` +
-    "You'll be asked to create a free account first (so we can reach you about pickup), " +
-    "then describe the item and add a photo. Our team reviews every listing before it goes live."
-  );
+function helpText() {
+  const lines = ["Need a hand? We are happy to help."];
+  if (HELP_WHATSAPP) lines.push("", `Chat with our team: https://wa.me/${HELP_WHATSAPP}`);
+  lines.push("", `Or visit ${WEB_ORIGIN}/help`);
+  return lines.join("\n");
+}
+
+// The reply to one direct message, or null to stay quiet.
+function replyTo(text) {
+  const trimmed = text.trim();
+  const option = MENU.find((candidate) => candidate.key === trimmed);
+  if (option) {
+    if (!option.path) return helpText();
+    return `${option.intro}\n${WEB_ORIGIN}${option.path}\n\nReply "menu" any time to see the options again.`;
+  }
+  const lower = trimmed.toLowerCase();
+  if (DONATION_KEYWORDS.some((keyword) => lower.includes(keyword))) {
+    return (
+      "Thanks for wanting to donate furniture!\n\n" +
+      "Please fill in this short form to list your item:\n" +
+      `${DONATION_FORM_URL}\n\n` +
+      "You'll be asked to create a free account first (so we can reach you about pickup), " +
+      "then describe the item and add photos. Our team reviews every listing before it goes live.\n\n" +
+      'Reply "menu" to see everything else we can help with.'
+    );
+  }
+  if (/\bhelp\b/.test(lower)) return helpText();
+  // Anything else (hi, hello, menu, ...) gets the welcome menu.
+  return menuText();
 }
 
 let sock = null;
@@ -103,12 +144,14 @@ async function startSocket() {
         message.message?.extendedTextMessage?.text ||
         "";
 
-      if (!text || !looksLikeDonationIntent(text)) continue;
+      if (!text) continue;
+      const reply = replyTo(text);
+      if (!reply) continue;
 
       try {
-        await sock.sendMessage(remoteJid, { text: donationReplyText() });
+        await sock.sendMessage(remoteJid, { text: reply });
       } catch (err) {
-        console.error("Failed to send donation reply", err);
+        console.error("Failed to send reply", err);
       }
     }
   });
@@ -142,6 +185,26 @@ app.get("/internal/groups", requireInternalSecret, async (_req, res) => {
   } catch (err) {
     console.error("Failed to fetch groups", err);
     res.status(500).json({ error: "failed to fetch groups" });
+  }
+});
+
+// One message to one person: the backend's notifications job (backend/app/notifications.py).
+// Body: { to: "6591234567", text: "..." }.
+app.post("/internal/send", requireInternalSecret, async (req, res) => {
+  if (!sock) return res.status(503).json({ error: "not connected yet" });
+
+  const { to, text } = req.body || {};
+  const digits = String(to || "").replace(/[^0-9]/g, "");
+  if (digits.length < 8 || digits.length > 15 || !text) {
+    return res.status(400).json({ error: "to (8-15 digits) and text are required" });
+  }
+
+  try {
+    await sock.sendMessage(`${digits}@s.whatsapp.net`, { text: String(text) });
+    res.json({ status: "sent" });
+  } catch (err) {
+    console.error("Failed to send message", err);
+    res.status(502).json({ error: "failed to send whatsapp message" });
   }
 });
 

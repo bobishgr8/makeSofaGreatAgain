@@ -9,6 +9,7 @@ from math import asin, cos, radians, sin, sqrt
 # How much lift access matters for each category: 0 = carry it by hand,
 # 1 = impractical without a lift.
 CATEGORY_LIFT_IMPORTANCE = {
+    "fridge": 1.0, "washing_machine": 0.9,
     "sofa": 0.9, "bed": 0.9, "storage": 0.8, "table": 0.5, "chair": 0.1, "other": 0.5,
 }
 DEFAULT_LIFT_IMPORTANCE = 0.5

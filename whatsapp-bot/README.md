@@ -2,7 +2,11 @@
 
 Unofficial WhatsApp bot (via [Baileys](https://github.com/WhiskeySockets/Baileys)) that:
 
-- Replies in DM with the donation form link when someone messages the bot's number about donating furniture.
+- Replies to direct messages with the welcome menu from the Figma flow (donate, track donations, find
+  furniture, check requests, view all furniture, get help). People reply with a number and get a link
+  to the right page; messages about donating get the donation form link straight away.
+- Sends one-to-one notifications for the backend (`POST /internal/send` with `{to, text}`): the
+  backend's `send_notifications` job turns each status change into a message (`backend/app/notifications.py`).
 - Posts an announcement into a WhatsApp group/announcement channel when the Flask backend tells it a
   furniture listing was approved (`POST /internal/announce`).
 

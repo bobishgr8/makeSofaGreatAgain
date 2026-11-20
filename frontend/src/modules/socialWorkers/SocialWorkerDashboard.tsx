@@ -8,10 +8,12 @@ import type { Case } from "../../common/dto/CaseDTO";
 import type { FurnitureView } from "../../common/dto/FurnitureDTO";
 import ProfilePrompt, { type SocialWorkerProfile } from "./ProfilePrompt";
 import YourMatches from "./YourMatches";
+import YourWaitlist from "./YourWaitlist";
 
 export default function SocialWorkerDashboard() {
   const [cases, setCases] = useState<Case[]>([]);
   const [matches, setMatches] = useState<FurnitureView[]>([]);
+  const [waitlist, setWaitlist] = useState<FurnitureView[]>([]);
   const [profile, setProfile] = useState<SocialWorkerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -22,13 +24,15 @@ export default function SocialWorkerDashboard() {
     try {
       setError("");
 
-      const [caseData, matchData] = await Promise.all([
+      const [caseData, matchData, waitlistData] = await Promise.all([
         api<Case[]>("/api/cases"),
         api<FurnitureView[]>("/api/matches"),
+        api<FurnitureView[]>("/api/matches/waitlist").catch(() => []),
       ]);
 
       setCases(caseData);
       setMatches(matchData);
+      setWaitlist(waitlistData);
     } catch (err) {
       console.error("Failed to load cases:", err);
 
@@ -119,6 +123,8 @@ export default function SocialWorkerDashboard() {
         cases={cases}
         onChanged={() => void loadWorkspace()}
       />
+
+      <YourWaitlist items={waitlist} onChanged={() => void loadWorkspace()} />
 
       <section>
         <div className="page-heading">

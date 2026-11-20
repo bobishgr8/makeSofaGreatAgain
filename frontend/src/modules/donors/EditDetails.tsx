@@ -5,7 +5,8 @@ import Button from "../../common/components/Button";
 import FormField from "../../common/components/FormField";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import { api, ApiError } from "../../common/api";
-import { todaySgt } from "../../common/dates";
+import { addDays, todaySgt } from "../../common/dates";
+import { CONDITION_OPTIONS, MIN_COLLECTION_DAYS } from "../../common/donationSpec";
 import { CONDITION_LABELS, type FurnitureView } from "../../common/dto/FurnitureDTO";
 import { useDonorFurniture } from "./useDonorFurniture";
 import "./DonorFurniture.css";
@@ -130,9 +131,16 @@ export default function EditDetails() {
 
         <FormField label="Condition">
           <select value={draft.condition} onChange={(e) => update("condition", e.target.value)} required>
-            {Object.entries(CONDITION_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
+            {/* An older listing keeps its original condition as a choice. */}
+            {!CONDITION_OPTIONS.some((option) => option.value === original.condition) &&
+              original.condition && (
+                <option value={original.condition}>
+                  {CONDITION_LABELS[original.condition] ?? original.condition}
+                </option>
+              )}
+            {CONDITION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -166,7 +174,7 @@ export default function EditDetails() {
         <FormField label="Expected delivery date">
           <input
             type="date"
-            min={todaySgt()}
+            min={addDays(todaySgt(), MIN_COLLECTION_DAYS)}
             value={draft.expectedDeliveryDate}
             onChange={(e) => update("expectedDeliveryDate", e.target.value)}
             required

@@ -10,7 +10,6 @@ export const FURNITURE_STATUSES = [
   "in_delivery",
   "delivered",
   "collected",
-  "delivered",
   "withdrawn",
 ] as const;
 
@@ -25,7 +24,6 @@ export const FURNITURE_STATUS_LABELS: Record<FurnitureStatus, string> = {
   in_delivery: "Delivery in progress",
   delivered: "Delivered",
   collected: "Collected",
-  delivered: "Delivered",
   withdrawn: "Withdrawn",
 };
 
@@ -51,10 +49,15 @@ export const STAGE_LABELS: Record<DonorStage, string> = {
   cancelled: "Cancelled",
 };
 
-// Matches the condition options on the donation form.
+// Labels for every condition value: the five on today's donation form
+// (CONDITION_OPTIONS in common/donationSpec.ts) and those on older listings.
 export const CONDITION_LABELS: Record<string, string> = {
-  excellent: "Excellent condition",
+  like_new: "Like new",
   good: "Good condition",
+  visible_wear: "Used with visible wear",
+  minor_defect: "Minor defect but still usable",
+  requires_repair: "Requires repair",
+  excellent: "Excellent condition",
   usable: "Usable",
   repair_needed: "Needs minor repair",
 };
@@ -65,6 +68,7 @@ export const FURNITURE_ACTIONS = [
   "approve",
   "reject",
   "flag_for_review",
+  "withdraw_listing",
   "cancel_request",
   "accept_match",
   "connect",
@@ -77,6 +81,8 @@ export const FURNITURE_ACTIONS = [
   "rearrange_logistics",
   "complete_delivery",
   "cancel_delivery",
+  "join_waitlist",
+  "leave_waitlist",
   "edit",
 ] as const;
 
@@ -105,6 +111,10 @@ export type Furniture = {
   title: string;
   category: string;
   subcategory?: string;
+  brand?: string;
+  modelNumber?: string;
+  // Answers to the per-category questions (common/donationSpec.ts).
+  details?: Record<string, string | number | boolean>;
 
   condition: string;
   conditionNotes?: string;
@@ -157,6 +167,16 @@ export type FurnitureView = Furniture & {
   allowedActions: FurnitureAction[];
   submittedAt?: string;
 
+  // The waitlist (backend/app/lifecycle.py): everyone sees its length, a
+  // waiting social worker their place, the parties who is waiting.
+  // Set once the social worker has passed on a thank-you note (backend/app/thanks.py).
+  thankYouSentAt?: string;
+  waitlistLength?: number;
+  waitlistPosition?: number;
+  waitlist?: Array<{ organisation?: string; requestedAt?: string }>;
+  // GET /api/matches/waitlist only: the caller's cases in the queue.
+  waitlistCaseIds?: string[];
+
   expectedDeliveryDate?: string;
   cancelReason?: string | null;
   cancelKind?: CancelKind;
@@ -164,13 +184,14 @@ export type FurnitureView = Furniture & {
   matchSummary?: MatchSummary;
   private?: {
     pickupAddress?: string;
+    postalCode?: string;
     // The beneficiary's address, kept only while a delivery is being arranged.
     deliveryAddress?: string | null;
   };
 };
 
 // Why a cancelled donation was cancelled (backend/app/lifecycle.py cancel_kind()).
-export type CancelKind = "donor" | "rejected" | "no_match" | "no_connect";
+export type CancelKind = "donor" | "rejected" | "removed" | "no_match" | "no_connect";
 
 // The active match, as the donor, the matched social worker or an admin sees it.
 export type MatchSummary = {

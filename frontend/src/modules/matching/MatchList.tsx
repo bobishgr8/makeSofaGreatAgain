@@ -5,19 +5,16 @@ import { api } from "../../common/api";
 import LoadingSpinner from "../../common/components/LoadingSpinner";
 import MatchCard from "./MatchCard";
 import FurnitureCard from "../furniture/FurnitureCard";
-import type { Furniture } from "../../common/dto/FurnitureDTO";
+import type { FurnitureView } from "../../common/dto/FurnitureDTO";
+import { useFurnitureAction } from "../../common/hooks/useFurnitureAction";
 import type { Suggestion } from "../../common/dto/MatchDTO";
 import ProfilePrompt, {
   type SocialWorkerProfile,
 } from "../socialWorkers/ProfilePrompt";
 
-type Mode = "matches" | "browse" | "saved" | "reserved";
+type Mode = "matches" | "browse" | "saved";
 
 const SAVED_KEY = "refurbish-saved-furniture";
-
-// Match statuses that represent an active or completed reservation, as
-// opposed to a still-unclaimed suggestion or one that was turned down.
-const RESERVATION_STATUSES = ["reserved", "collected", "delivered", "completed"];
 
 export default function MatchList() {
   const [searchParams] = useSearchParams();
@@ -30,9 +27,8 @@ export default function MatchList() {
   );
 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [furniture, setFurniture] = useState<Furniture[]>([]);
+  const [furniture, setFurniture] = useState<FurnitureView[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [reservedMatches, setReservedMatches] = useState<Match[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -108,7 +104,7 @@ export default function MatchList() {
       setLoading(true);
       setError("");
 
-      const items = await api<Furniture[]>(
+      const items = await api<FurnitureView[]>(
         "/api/furniture?status=available",
       );
 
@@ -119,28 +115,6 @@ export default function MatchList() {
       setError(
         "We couldn't load the available furniture.",
       );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadReservedMatches() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await api<Match[]>("/api/matches");
-
-      setReservedMatches(
-        data.filter(
-          (item) =>
-            item.status && RESERVATION_STATUSES.includes(item.status),
-        ),
-      );
-    } catch (err) {
-      console.error("Failed to load reservations:", err);
-
-      setError("We couldn't load your reservations.");
     } finally {
       setLoading(false);
     }
@@ -169,6 +143,19 @@ export default function MatchList() {
     [furniture, savedIds],
   );
 
+  // Opened from a case: the catalogue can request items for it too.
+  const requestProps: RequestProps | undefined = caseId
+    ? {
+        caseId,
+        canRequest: profileComplete,
+        onRequested: () => navigate("/workspace"),
+        onFailed: (message) => {
+          requestFailed(message);
+          void loadFurniture();
+        },
+      }
+    : undefined;
+
   function changeMode(nextMode: Mode) {
     setMode(nextMode);
 
@@ -178,10 +165,6 @@ export default function MatchList() {
       furniture.length === 0
     ) {
       void loadFurniture();
-    }
-
-    if (nextMode === "reserved") {
-      void loadReservedMatches();
     }
   }
 
@@ -252,18 +235,6 @@ export default function MatchList() {
         >
           Saved ({savedIds.length})
         </button>
-
-        <button
-          type="button"
-          className={
-            mode === "reserved"
-              ? "button"
-              : "button secondary"
-          }
-          onClick={() => changeMode("reserved")}
-        >
-          My reservations
-        </button>
       </div>
 
       {error && (
@@ -304,6 +275,7 @@ export default function MatchList() {
               items={furniture}
               savedIds={savedIds}
               onToggleSaved={toggleSaved}
+              request={requestProps}
             />
           )}
 
@@ -312,51 +284,13 @@ export default function MatchList() {
               items={savedFurniture}
               savedIds={savedIds}
               onToggleSaved={toggleSaved}
+              request={requestProps}
               savedMode
             />
-          )}
-
-          {mode === "reserved" && (
-            <ReservedMatches matches={reservedMatches} />
           )}
         </>
       )}
     </main>
-  );
-}
-
-function ReservedMatches({ matches }: { matches: Match[] }) {
-  if (!matches.length) {
-    return (
-      <div className="empty">
-        <h2>No reservations yet.</h2>
-        <p>
-          Reserve a matched item from a case's suggested matches and it will
-          appear here.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <section>
-      <div className="section-heading">
-        <div>
-          <h2>My reservations</h2>
-
-          <p className="muted-text">
-            {matches.length} active reservation
-            {matches.length === 1 ? "" : "s"}.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid match-grid">
-        {matches.map((match) => (
-          <MatchCard key={match.id} match={match} showCase />
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -373,6 +307,9 @@ function MatchResults({
   onRequested: () => void;
   onFailed: (message: string) => void;
 }) {
+  const available = suggestions.filter((suggestion) => !suggestion.waitlist);
+  const queued = suggestions.filter((suggestion) => suggestion.waitlist);
+
   if (!suggestions.length) {
     return (
       <div className="empty">
@@ -393,14 +330,15 @@ function MatchResults({
           <h2>Suggested matches</h2>
 
           <p className="muted-text">
-            {suggestions.length} candidates found for this case, ranked by
-            distance, fit and how soon the donor needs it gone.
+            {available.length
+              ? `${available.length} candidates found for this case, ranked by distance, fit and how soon the donor needs it gone.`
+              : "Nothing available fits this case right now."}
           </p>
         </div>
       </div>
 
       <div className="grid match-grid">
-        {suggestions.map((suggestion, index) => (
+        {available.map((suggestion, index) => (
           <MatchCard
             key={suggestion.furniture.id}
             suggestion={suggestion}
@@ -412,7 +350,63 @@ function MatchResults({
           />
         ))}
       </div>
+
+      {queued.length > 0 && (
+        <>
+          <div className="section-heading">
+            <div>
+              <h2>Join a waitlist</h2>
+              <p className="muted-text">
+                These fit the case but are already requested. If one becomes
+                free, the first case in line is matched to it.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid match-grid">
+            {queued.map((suggestion) => (
+              <MatchCard
+                key={suggestion.furniture.id}
+                suggestion={suggestion}
+                caseId={caseId}
+                canRequest={canRequest}
+                onRequested={onRequested}
+                onFailed={onFailed}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </section>
+  );
+}
+
+type RequestProps = {
+  caseId: string;
+  canRequest: boolean;
+  onRequested: () => void;
+  onFailed: (message: string) => void;
+};
+
+function RequestButton({ item, request }: { item: FurnitureView; request: RequestProps }) {
+  const { run, pending } = useFurnitureAction(item, request.onRequested);
+
+  // The server only offers accept_match to an approved social worker.
+  if (!item.allowedActions?.includes("accept_match")) return null;
+
+  return (
+    <button
+      type="button"
+      className="button"
+      disabled={pending || !request.canRequest}
+      title={request.canRequest ? undefined : "Save your organisation and WhatsApp number first"}
+      onClick={async () => {
+        const failure = await run("accept_match", { caseId: request.caseId });
+        if (failure) request.onFailed(failure);
+      }}
+    >
+      {pending ? "Requesting..." : "Request for this case"}
+    </button>
   );
 }
 
@@ -420,11 +414,13 @@ function FurnitureBrowser({
   items,
   savedIds,
   onToggleSaved,
+  request,
   savedMode = false,
 }: {
-  items: Furniture[];
+  items: FurnitureView[];
   savedIds: string[];
   onToggleSaved: (id: string) => void;
+  request?: RequestProps;
   savedMode?: boolean;
 }) {
   if (!items.length) {
@@ -473,6 +469,8 @@ function FurnitureBrowser({
               key={item.id}
             >
               <FurnitureCard item={item} />
+
+              {request && <RequestButton item={item} request={request} />}
 
               <button
                 type="button"
