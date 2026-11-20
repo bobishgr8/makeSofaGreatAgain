@@ -1,6 +1,12 @@
-"""Ranks furniture for a household case on what drives logistics cost:
-lift access, proximity, dimensions and urgency. How much each counts depends
-on how hard the item is to carry. Pure and import-light so it is easy to test.
+"""Ranks furniture for a household case out of 100, in two halves:
+
+- Request fit (50): how well the item suits what the case asked for
+  (size and condition).
+- Delivery feasibility (50): how easy it is to get there (lift access,
+  distance, transport, urgency). How much lift access counts depends on how
+  hard the item is to carry.
+
+Items below MIN_SCORE are marked weak. Pure and import-light so it is easy to test.
 """
 
 from datetime import date
@@ -19,7 +25,29 @@ SMALL_SIDE_CM = 60
 SIZE_ADJUSTMENT = 0.2
 # From this importance on, the reasons say lift access was weighted highly.
 HIGH_LIFT_IMPORTANCE = 0.7
-UNCHECKED_DIMENSIONS_SHARE = 0.4
+
+# Request fit: 50 points.
+SIZE_POINTS = 30
+# The footprint fits but the item is taller than the height the case gave.
+TALLER_SIZE_POINTS = 20
+UNCHECKED_SIZE_POINTS = 12
+CONDITION_POINTS = 20
+CONDITION_SHARE = {"excellent": 1.0, "good": 0.8, "usable": 0.6, "repair_needed": 0.3}
+CONDITION_LABELS = {
+    "excellent": "Excellent condition",
+    "good": "Good condition",
+    "usable": "Usable condition",
+    "repair_needed": "Needs minor repair",
+}
+UNKNOWN_CONDITION_SHARE = 0.6
+
+# Delivery feasibility: 50 points.
+FEASIBILITY_POINTS = 50
+TRANSPORT_POINTS = 10
+# "Yes, near my area" counts as full delivery help within this distance.
+LOCAL_DELIVERY_KM = 10
+# Items below this score are weak: hidden until the social worker asks to see them.
+MIN_SCORE = 50
 # Full urgency points at this many days before the delivery date, none at RELAXED_DAYS.
 URGENT_DAYS = 7
 RELAXED_DAYS = 30
@@ -79,21 +107,30 @@ def _size(dimensions, key):
     return value if isinstance(value, (int, float)) and value > 0 else None
 
 
-def fits(item, need):
-    """True when the item fits the need's space, False when it is too big,
-    None when a size is missing on either side."""
+def size_fit(item, need):
+    """How the item's size compares with the need's space:
+
+    - "fits": the footprint fits, and so does the height when both are given
+    - "taller": the footprint fits but the item is taller than the height given
+    - "too_big": the footprint does not fit, even turned round
+    - None: a width or depth is missing on either side
+
+    Never excludes an item: a too-big one is shown as a weak match instead.
+    """
     item_size = item.get("dimensionsCm")
     space = need.get("maxDimensionsCm")
-    sizes = [_size(d, k) for d in (item_size, space) for k in ("width", "depth", "height")]
-    if any(size is None for size in sizes):
-        return None
-    width, depth, height, max_width, max_depth, max_height = sizes
-    if height > max_height:
-        return False
-    # The item can be turned, so either orientation of the footprint counts.
-    return (width <= max_width and depth <= max_depth) or (
-        width <= max_depth and depth <= max_width
+    width, depth, max_width, max_depth = (
+        _size(d, k) for d in (item_size, space) for k in ("width", "depth")
     )
+    if None in (width, depth, max_width, max_depth):
+        return None
+    # The item can be turned, so either orientation of the footprint counts.
+    if not ((width <= max_width and depth <= max_depth) or (width <= max_depth and depth <= max_width)):
+        return "too_big"
+    height, max_height = _size(item_size, "height"), _size(space, "height")
+    if height and max_height and height > max_height:
+        return "taller"
+    return "fits"
 
 
 def lift_importance(item):
@@ -110,15 +147,15 @@ def lift_importance(item):
     return min(max(importance, 0), 1)
 
 
-def weights_for(importance):
-    """Points out of 100. As lift importance rises, points move from
-    proximity, urgency and dimensions to lift access."""
+def feasibility_weights(importance):
+    """The 50 delivery feasibility points. As lift importance rises, points
+    move from proximity and urgency to lift access."""
     weights = {
-        "access": round(10 + 30 * importance),
-        "proximity": round(40 - 20 * importance),
-        "urgency": round(20 - 5 * importance),
+        "access": round(5 + 15 * importance),
+        "proximity": round(20 - 10 * importance),
+        "transport": TRANSPORT_POINTS,
     }
-    weights["dimensions"] = 100 - sum(weights.values())
+    weights["urgency"] = FEASIBILITY_POINTS - sum(weights.values())
     return weights
 
 
@@ -129,27 +166,70 @@ def _km(a, b):
     return 2 * EARTH_RADIUS_KM * asin(sqrt(h))
 
 
-def _proximity(item, case):
-    """The share of the proximity points and the reason, or (0, None)."""
+def _distance_km(item, case):
+    """Km between the two neighbourhoods (0 for the same one), or None if unknown."""
     item_district = (item.get("location") or {}).get("district")
     case_district = (case.get("location") or {}).get("district")
     if not item_district or not case_district:
-        return 0, None
+        return None
     if item_district == case_district:
-        return 1, "Same neighbourhood"
+        return 0
     here = NEIGHBOURHOOD_CENTROIDS.get(item_district)
     there = NEIGHBOURHOOD_CENTROIDS.get(case_district)
     if not here or not there:
+        return None
+    return _km(here, there)
+
+
+def _proximity(km):
+    """The share of the proximity points and the reason, or (0, None)."""
+    if km is None or km >= FAR_KM:
         return 0, None
-    km = _km(here, there)
-    if km >= FAR_KM:
-        return 0, None
+    if km == 0:
+        return 1, "Same neighbourhood"
     return 1 - km / FAR_KM, f"About {round(km)} km away"
 
 
 def _has_lift(side):
     """Lift is a yes/no answer; anything but an explicit yes counts as no."""
     return (side or {}).get("hasLift") is True
+
+
+def _access(item, case):
+    """The share of the access points (half per end) and the reasons."""
+    collection = item.get("collection") or {}
+    if _has_lift(collection):
+        pickup, pickup_reason = 1, "Lift at pickup"
+    elif collection.get("disassembly") in ("yes", "already"):
+        # Carrying it down in parts is easier than carrying it whole.
+        pickup, pickup_reason = 0.5, "No lift at pickup, but it can be dismantled"
+    else:
+        pickup, pickup_reason = 0, "No lift at pickup"
+    if not _has_lift(case.get("delivery")):
+        delivery, delivery_reason = 0, "No lift at delivery"
+    elif collection.get("fitsInLift") == "no":
+        delivery, delivery_reason = 0, "Lift at delivery, but the item doesn't fit a lift"
+    else:
+        delivery, delivery_reason = 1, "Lift at delivery"
+    return (pickup + delivery) / 2, [pickup_reason, delivery_reason]
+
+
+def _transport(item, case, km):
+    """The share of the transport points and the reason."""
+    if (case.get("delivery") or {}).get("transportAvailable") is True:
+        return 1, "Household has transport"
+    area = (item.get("collection") or {}).get("deliveryArea")
+    if area == "network":
+        return 1, "Donor can deliver"
+    if area == "local":
+        if km is not None and km <= LOCAL_DELIVERY_KM:
+            return 1, "Donor can deliver nearby"
+        return 0.5, "Donor delivers near their area only"
+    if area == "maybe":
+        return 0.5, "Donor may help deliver"
+    if area == "no":
+        return 0, "No transport on either side"
+    return 0.5, "Transport not confirmed"
 
 
 def _days_left(item, today):
@@ -161,40 +241,63 @@ def _days_left(item, today):
 
 
 def score_match(item, case, today):
-    """Transparent score out of 100. Return None when a hard constraint fails."""
+    """Transparent score out of 100. Return None when a hard constraint fails
+    (wrong category, or the item is no longer available)."""
     need = need_for(item, case)
     if need is None:
         return None
     if item.get("status") != "available":
         return None
-    fit = fits(item, need)
-    if fit is False:
-        return None
 
     importance = lift_importance(item)
-    weights = weights_for(importance)
+    weights = {"size": SIZE_POINTS, "condition": CONDITION_POINTS, **feasibility_weights(importance)}
     breakdown = dict.fromkeys(weights, 0)
     reasons = []
 
-    share, reason = _proximity(item, case)
+    # Request fit.
+    fit = size_fit(item, need)
+    size, space = item.get("dimensionsCm") or {}, need.get("maxDimensionsCm") or {}
+    if fit == "fits":
+        breakdown["size"] = SIZE_POINTS
+        reasons.append("Fits the space")
+    elif fit == "taller":
+        breakdown["size"] = TALLER_SIZE_POINTS
+        reasons.append(
+            f"Fits the floor space, but taller than the height given "
+            f"({size['height']} cm vs {space['height']} cm)"
+        )
+    elif fit == "too_big":
+        reasons.append(
+            f"Too big for the space: {size['width']}×{size['depth']} cm "
+            f"vs {space['width']}×{space['depth']} cm"
+        )
+    else:
+        breakdown["size"] = UNCHECKED_SIZE_POINTS
+        reasons.append("Size not checked")
+
+    condition = item.get("condition")
+    breakdown["condition"] = round(
+        CONDITION_POINTS * CONDITION_SHARE.get(condition, UNKNOWN_CONDITION_SHARE)
+    )
+    if condition in CONDITION_LABELS:
+        reasons.append(CONDITION_LABELS[condition])
+
+    # Delivery feasibility.
+    km = _distance_km(item, case)
+    share, reason = _proximity(km)
     breakdown["proximity"] = round(weights["proximity"] * share)
     if reason:
         reasons.append(reason)
 
-    pickup = _has_lift(item.get("collection"))
-    delivery = _has_lift(case.get("delivery"))
-    breakdown["access"] = round(weights["access"] * (pickup + delivery) / 2)
-    reasons.append("Lift at pickup" if pickup else "No lift at pickup")
-    reasons.append("Lift at delivery" if delivery else "No lift at delivery")
+    share, access_reasons = _access(item, case)
+    breakdown["access"] = round(weights["access"] * share)
+    reasons.extend(access_reasons)
     if importance >= HIGH_LIFT_IMPORTANCE:
         reasons.append("Lift access weighted highly for this item")
 
-    if fit:
-        breakdown["dimensions"] = weights["dimensions"]
-        reasons.append("Fits the space")
-    else:
-        breakdown["dimensions"] = round(weights["dimensions"] * UNCHECKED_DIMENSIONS_SHARE)
-        reasons.append("Size not checked")
+    share, reason = _transport(item, case, km)
+    breakdown["transport"] = round(weights["transport"] * share)
+    reasons.append(reason)
 
     days = _days_left(item, today)
     # Urgent on the donor's delivery date itself. Items past it are still shown.
@@ -210,10 +313,16 @@ def score_match(item, case, today):
         elif breakdown["urgency"]:
             reasons.append(f"Needs a home within {days} day{'' if days == 1 else 's'}")
 
+    fit_points = breakdown["size"] + breakdown["condition"]
+    score = sum(breakdown.values())
     return {
-        "score": sum(breakdown.values()),
+        "score": score,
+        "fit": fit_points,
+        "feasibility": score - fit_points,
         "scoreBreakdown": breakdown,
         "weights": weights,
         "reasons": reasons,
         "urgent": urgent,
+        # A too-big item is always weak: shown, but only behind the reveal.
+        "weak": score < MIN_SCORE or fit == "too_big",
     }

@@ -6,6 +6,11 @@ import type { FurnitureView } from "./FurnitureDTO";
 export type Suggestion = {
   furniture: FurnitureView;
   score: number;
+  // Request fit and delivery feasibility, each out of 50; they add up to score.
+  fit?: number;
+  feasibility?: number;
+  // Below the minimum score: shown only when the social worker asks for weaker matches.
+  weak?: boolean;
   scoreBreakdown: Record<string, number>;
   // Points available per component for this item; lift access counts for more on bulky items.
   weights?: Record<string, number>;

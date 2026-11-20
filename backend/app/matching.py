@@ -65,7 +65,11 @@ def suggest_matches():
             continue
         suggestions.append({"furniture": lifecycle.view(item, g.user), **result})
 
+    # Strong matches first, then weak ones (below scoring.MIN_SCORE), which the
+    # page keeps hidden until the social worker asks to see them.
     suggestions.sort(key=lambda suggestion: suggestion["score"], reverse=True)
+    strong = [s for s in suggestions if not s["weak"]][:SUGGESTION_LIMIT]
+    weak = [s for s in suggestions if s["weak"]][:SUGGESTION_LIMIT]
 
     # Then items held for someone else that this case could take once they are
     # free: offered as "join the waitlist" (Figma flow), after the available ones.
@@ -89,7 +93,7 @@ def suggest_matches():
         queued.append({"furniture": lifecycle.view(item, g.user), **result, "waitlist": True})
     queued.sort(key=lambda suggestion: suggestion["score"], reverse=True)
 
-    return jsonify(suggestions[:SUGGESTION_LIMIT] + queued[:WAITLIST_SUGGESTION_LIMIT])
+    return jsonify(strong + weak + queued[:WAITLIST_SUGGESTION_LIMIT])
 
 
 @matching_bp.get("/waitlist")

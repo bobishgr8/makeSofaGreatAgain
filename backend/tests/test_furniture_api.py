@@ -399,7 +399,7 @@ class FurnitureApiTests(unittest.TestCase):
         self.set_profile(self.sw())
         near = self.available(title="Near")
         far = self.available(title="Far", location={"city": "ReFurbish", "district": "Jurong West"})
-        self.available(title="Too big", dimensionsCm={"height": 250, "width": 60, "depth": 55})
+        too_big = self.available(title="Too big", dimensionsCm={"height": 80, "width": 150, "depth": 120})
         chair = self.available(title="Chair", category="chair")
         case = self.create_case(
             self.sw(),
@@ -408,9 +408,14 @@ class FurnitureApiTests(unittest.TestCase):
 
         ranked = self.suggestions(case["id"], self.sw())
         ids = [s["furniture"]["id"] for s in ranked]
-        # "Too big" does not fit the storage space, and a chair is not storage.
-        self.assertEqual(ids, [near["id"], far["id"]])
+        # "Too big" does not fit the storage space, so it comes last as a weak
+        # match; a chair is not storage, so it is not suggested at all.
+        self.assertEqual(ids, [near["id"], far["id"], too_big["id"]])
+        self.assertEqual([s["weak"] for s in ranked], [False, False, True])
+        self.assertIn("Too big for the space: 150×120 cm vs 100×100 cm", ranked[2]["reasons"])
         self.assertNotIn(chair["id"], ids)
+        self.assertFalse(ranked[0]["weak"])
+        self.assertEqual(ranked[0]["fit"] + ranked[0]["feasibility"], ranked[0]["score"])
         self.assertEqual(ranked[0]["furniture"]["allowedActions"], ["accept_match"])
         self.assertIn("Same neighbourhood", ranked[0]["reasons"])
         self.assertNotIn("88 Tampines Road", json.dumps(ranked))
@@ -418,9 +423,27 @@ class FurnitureApiTests(unittest.TestCase):
 
         # Any signed-in social worker can see suggestions; requesting still checks
         # approval and case ownership.
-        self.assertEqual(len(self.suggestions(case["id"], self.sw("sw-2"))), 2)
+        self.assertEqual(len(self.suggestions(case["id"], self.sw("sw-2"))), 3)
         pending = {**self.sw(), "X-Demo-Approval": "pending"}
-        self.assertEqual(len(self.suggestions(case["id"], pending)), 2)
+        self.assertEqual(len(self.suggestions(case["id"], pending)), 3)
+
+    def test_weak_matches_come_after_strong_ones(self):
+        from app.validation import today_sgt
+
+        self.set_profile(self.sw())
+        weak = self.available(
+            title="Weak",
+            condition="repair_needed",
+            location={"city": "ReFurbish", "district": "Jurong West"},
+            collection={"floor": 9, "hasLift": False, "deliveryArea": "no"},
+            expectedDeliveryDate=(today_sgt() + timedelta(days=40)).isoformat(),
+        )
+        strong = self.available(title="Strong", collection={"floor": 3, "hasLift": True, "deliveryArea": "network"})
+        case = self.create_case(self.sw(), delivery={"hasLift": False, "transportAvailable": False})
+
+        ranked = self.suggestions(case["id"], self.sw())
+        self.assertEqual([s["furniture"]["id"] for s in ranked], [strong["id"], weak["id"]])
+        self.assertEqual([s["weak"] for s in ranked], [False, True])
 
     def test_connect_then_find_another_match(self):
         item, case = self.matched()

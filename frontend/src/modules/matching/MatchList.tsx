@@ -307,8 +307,7 @@ function MatchResults({
   onRequested: () => void;
   onFailed: (message: string) => void;
 }) {
-  const available = suggestions.filter((suggestion) => !suggestion.waitlist);
-  const queued = suggestions.filter((suggestion) => suggestion.waitlist);
+  const [showWeak, setShowWeak] = useState(false);
 
   if (!suggestions.length) {
     return (
@@ -323,6 +322,15 @@ function MatchResults({
     );
   }
 
+  // The server sends strong matches first, then weak ones (below the minimum
+  // score or too big for the space), then items held for another case that
+  // this case can join the waitlist for.
+  const available = suggestions.filter((suggestion) => !suggestion.waitlist);
+  const queued = suggestions.filter((suggestion) => suggestion.waitlist);
+  const strong = available.filter((suggestion) => !suggestion.weak);
+  const weak = available.filter((suggestion) => suggestion.weak);
+  const shown = showWeak ? [...strong, ...weak] : strong;
+
   return (
     <section>
       <div className="section-heading">
@@ -330,26 +338,42 @@ function MatchResults({
           <h2>Suggested matches</h2>
 
           <p className="muted-text">
-            {available.length
-              ? `${available.length} candidates found for this case, ranked by distance, fit and how soon the donor needs it gone.`
-              : "Nothing available fits this case right now."}
+            {strong.length
+              ? `${strong.length} strong ${strong.length === 1 ? "match" : "matches"} for this case, ranked by how well it fits the request and how easy delivery is.`
+              : "No strong matches for this case right now."}
           </p>
         </div>
       </div>
 
-      <div className="grid match-grid">
-        {available.map((suggestion, index) => (
-          <MatchCard
-            key={suggestion.furniture.id}
-            suggestion={suggestion}
-            caseId={caseId}
-            rank={index + 1}
-            canRequest={canRequest}
-            onRequested={onRequested}
-            onFailed={onFailed}
-          />
-        ))}
-      </div>
+      {shown.length > 0 && (
+        <div className="grid match-grid">
+          {shown.map((suggestion, index) => (
+            <MatchCard
+              key={suggestion.furniture.id}
+              suggestion={suggestion}
+              caseId={caseId}
+              rank={index + 1}
+              canRequest={canRequest}
+              onRequested={onRequested}
+              onFailed={onFailed}
+            />
+          ))}
+        </div>
+      )}
+
+      {weak.length > 0 && (
+        <div className="actions">
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => setShowWeak((current) => !current)}
+          >
+            {showWeak
+              ? "Hide weaker matches"
+              : `Show ${weak.length} weaker ${weak.length === 1 ? "match" : "matches"}`}
+          </button>
+        </div>
+      )}
 
       {queued.length > 0 && (
         <>

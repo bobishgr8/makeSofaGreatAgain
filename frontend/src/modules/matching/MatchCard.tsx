@@ -62,6 +62,10 @@ export default function MatchCard({
           <span className="pill pill-warning">Urgent</span>
         )}
 
+        {suggestion.weak && (
+          <span className="pill pill-warning">Weak match</span>
+        )}
+
         <span className="status">
           {Math.round(suggestion.score)}% fit
         </span>
@@ -88,6 +92,12 @@ export default function MatchCard({
           }}
         />
       </div>
+
+      {suggestion.fit != null && suggestion.feasibility != null && (
+        <p className="muted-text">
+          Fit {suggestion.fit}/50 · Delivery {suggestion.feasibility}/50
+        </p>
+      )}
 
       {suggestion.reasons.length > 0 && (
         <div>

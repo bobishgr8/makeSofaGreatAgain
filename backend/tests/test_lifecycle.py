@@ -211,14 +211,17 @@ class AcceptMatchTests(unittest.TestCase):
         self.assert_refused(400, context=ctx(case=case(needs=[{"category": "bed"}])))
         self.assert_refused(400, context=ctx(case=case(fulfilment={"sofa": "item-9"})))
         self.assert_refused(400, listing=item("available", declinedCaseIds=["case-1"]))
-        self.assert_refused(
-            400,
+
+    def test_a_too_big_item_can_still_be_requested(self):
+        # Size is not a filter: it is suggested as a weak match, and the social worker decides.
+        decision = accept(
             listing=item("available", dimensionsCm={"width": 200, "depth": 90, "height": 80}),
             context=ctx(case=case(needs=[{
                 "category": "sofa",
                 "maxDimensionsCm": {"width": 150, "depth": 100, "height": 100},
             }])),
         )
+        self.assertEqual(decision.to, "matched")
 
     def test_ineligible_reason_is_none_for_a_good_pair(self):
         self.assertIsNone(lifecycle.ineligible_reason(item("available"), case(), date(2024, 9, 12)))

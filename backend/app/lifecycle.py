@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from firebase_admin import firestore
 
-from .scoring import category_key, fits, need_for
+from .scoring import category_key, need_for
 from .validation import SINGAPORE, clean_text, parse_delivery_date, validate_furniture
 
 COLLECTION = "furniture"
@@ -341,8 +341,8 @@ def ineligible_reason(item, case, today: date, ignore_status=False):
         return "This case does not need this kind of furniture"
     if category_key(item) in {**(case.get("fulfilment") or {}), **(case.get("delivered") or {})}:
         return "This case already has a match for this need"
-    if fits(item, need) is False:
-        return "This item is too big for the space"
+    # Size is not a filter: a too-big item is suggested as a weak match
+    # (scoring.size_fit), and the social worker decides.
     return None
 
 

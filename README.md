@@ -110,7 +110,42 @@ POST               /api/admin/run-jobs
 POST               /api/internal/run-jobs              (X-Internal-Token)
 ```
 
-Matching ranks the available furniture for one case on what drives logistics cost: lift access (yes/no at pickup and at delivery), proximity (km between neighbourhood centres), dimensions (the item must fit the space the case describes) and urgency (days left before the donor's delivery date). Weights depend on the item: the bulkier it is (by category and size), the more lift access counts and the less distance does. `backend/app/scoring.py` holds the score; `lifecycle.ineligible_reason` is the one definition of which items a case can take. Suggestions are computed on each request and never stored.
+### Matching
+
+Matching suggests furniture for one case. Suggestions are computed on each request and never stored. `lifecycle.ineligible_reason` decides which items a case can take; `backend/app/scoring.py` holds the score.
+
+**1. Which items are considered.** An item is left out only when one of these fails:
+
+| Check | Left out when |
+|---|---|
+| Available | The item isn't approved yet, or is already matched, delivered, withdrawn or rejected |
+| Case open | The case is closed |
+| Same category | The item's category isn't the one the case asked for |
+| Not released before | The item was already released or rematched away from this case |
+| Need still open | The case already has a matched or delivered item in that category |
+
+**2. How each item is scored (out of 100).** `k` is lift importance, from 0 to 1: fridge 1.0, washing machine, sofa and bed 0.9, storage 0.8, table and other 0.5, chair 0.1, plus 0.2 if any side is 180 cm or more, minus 0.2 if all sides are 60 cm or less.
+
+| Half | Part | Points | How it is scored |
+|---|---|---|---|
+| Request fit (50) | Size | 30 | Fits the space: 30. Fits the floor space but is taller than the height given: 20. Footprint too big, even turned round: 0, and the item is always weak. A width or depth missing: 12. |
+| | Condition | 20 | Excellent 20, good 16, usable 12, needs minor repair 6 |
+| Delivery feasibility (50) | Lift access | 5 + 15k | Half for each end. Pickup: a lift is full; no lift but the item can be dismantled is half. Delivery: the household's lift is full, unless the item doesn't fit a lift. |
+| | Distance | 20 − 10k | Full in the same neighbourhood, less with each km between neighbourhood centres, none from 20 km |
+| | Transport | 10 | Full if the household has transport or the donor delivers across the network. "Near my area": full within 10 km, else half. "Possibly": half. "Collection only": none. |
+| | Urgency | the rest (15 − 5k) | Full when the donor's delivery date is 7 days away or less (or past), none at 30 days or more |
+
+The bulkier the item, the more lift access counts and the less distance does, so a sofa from further away with a lift beats a nearby one without.
+
+**3. How matches are ranked and shown.**
+
+| Order | What | How it is shown |
+|---|---|---|
+| 1 | Strong matches: score 50 or more, and the footprint fits or wasn't checked | Highest score first, up to 10 |
+| 2 | Weak matches: score below 50, or too big for the space | Hidden behind "Show N weaker matches", highest score first, up to 10, each with a "Weak match" pill |
+| 3 | Waitlist: items already held for another case that would fit this one, scored as if free | Under "Join a waitlist", highest score first, up to 5 |
+
+Each card shows the score, "Fit x/50 · Delivery y/50", the reasons behind the score, and an "Urgent" pill on the donor's delivery date.
 
 A match is made when a social worker requests an item for a case (`accept_match`), which moves it to `matched` and holds it for that case. The donor approves by connecting on WhatsApp (`connect`); they can also cancel the match, or find another match once connected. The social worker can release it. If the donor does not connect within 5 days the donation is withdrawn. The active match lives on the item (`activeMatch`) and the case's `fulfilment` field records which need it fills; there is no separate matches collection.
 

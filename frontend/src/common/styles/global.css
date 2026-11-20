@@ -724,6 +724,9 @@ textarea {
 
 .browse-card {
   display: grid;
+  /* The card takes the row's extra height, so the button keeps its own size
+     when a neighbouring card is taller (for example, one with a photo). */
+  grid-template-rows: 1fr auto;
   gap: 12px;
 }
 
