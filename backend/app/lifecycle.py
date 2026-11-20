@@ -9,8 +9,8 @@ A match lives on the item as ``activeMatch`` and on the case as a ``fulfilment``
 slot; both are written here, in the same transaction as the status.
 
 The rules themselves (``decide``, ``plan_edit``, ``allowed_actions``, ``view``,
-``is_expired``, ``ineligible_reason``) are pure functions so they can be tested
-without Firestore.
+``ineligible_reason``) are pure functions so they can be tested without
+Firestore.
 """
 
 from collections import namedtuple
@@ -77,7 +77,6 @@ TRANSITIONS = {
     ("available", "flag_for_review"): Transition("pending_review", {"admin"}, False),
     ("pending_review", "cancel_request"): Transition("withdrawn", {"donor"}, True),
     ("available", "cancel_request"): Transition("withdrawn", {"donor"}, True),
-    ("available", "expire"): Transition("withdrawn", {"system"}, False),
     # State 2. A social worker's request holds the item for their case; the
     # donor approves by connecting.
     ("available", "accept_match"): Transition("matched", {"social_worker"}, False),
@@ -125,9 +124,9 @@ EDITABLE_STATUSES = {"pending_review", "available"}
 CONTENT_FIELDS = {"title", "condition", "conditionNotes", "dimensionsCm"}
 
 REASON_MAX_LEN = 500
+# Items are no longer withdrawn near their delivery date, but some were before.
 NO_MATCH_REASON = "no_match"
 NO_CONNECT_REASON = "no_connect"
-EXPIRY_DAYS_BEFORE_DELIVERY = 3
 CONNECT_DAYS = 5
 ADDRESS_MAX_LEN = 200
 # "own" is the donor arranging transport themselves. The rest are the providers
@@ -262,12 +261,11 @@ def ineligible_reason(item, case, today: date):
     """
     if item.get("status") != "available":
         return "This item is no longer available"
-    if is_expired(item, today):
-        return "This item is too close to its delivery date"
     if (case.get("status") or "open") != "open":
         return "This case is closed"
     if case.get("id") in (item.get("declinedCaseIds") or []):
         return "This item was already released for this case"
+    # A simple same-category match: both forms pick from the same category list.
     need = need_for(item, case)
     if need is None:
         return "This case does not need this kind of furniture"
@@ -701,17 +699,6 @@ def view(item, user, private=None, contact=None, now=None):
     return out
 
 
-def is_expired(item, today: date):
-    """No match within 3 days of the expected delivery date."""
-    if item.get("status") != "available":
-        return False
-    try:
-        delivery = date.fromisoformat(item.get("expectedDeliveryDate") or "")
-    except ValueError:
-        return False
-    return today >= delivery - timedelta(days=EXPIRY_DAYS_BEFORE_DELIVERY)
-
-
 def _utcnow():
     return datetime.now(timezone.utc)
 
@@ -842,46 +829,6 @@ def _apply_edit(transaction, reference, user, changes, private_changes):
     if history:
         transaction.set(reference.collection(HISTORY).document(), history)
     return {**item, **updates}
-
-
-def expire_stale(db, today: date):
-    """Withdraw available items that found no match in time. Returns their ids."""
-    expired = []
-    query = db.collection(COLLECTION).where("status", "==", "available")
-    for snapshot in query.stream():
-        if not is_expired(_snapshot_item(snapshot), today):
-            continue
-        try:
-            _, changed = apply_action(
-                db,
-                snapshot.reference,
-                "expire",
-                SYSTEM_USER,
-                {"expected_status": "available", "reason": NO_MATCH_REASON},
-            )
-        except LifecycleError:
-            continue  # the item moved on since the query ran
-        if changed:
-            expired.append(snapshot.id)
-    return expired
-
-
-def expire_if_stale(db, reference, item, today: date):
-    """An item put back in the pool too close to its delivery date can no longer
-    be matched, so withdraw it straight away. Returns the item as it now is."""
-    if not is_expired(item, today):
-        return item
-    try:
-        expired, _ = apply_action(
-            db,
-            reference,
-            "expire",
-            SYSTEM_USER,
-            {"expected_status": "available", "reason": NO_MATCH_REASON},
-        )
-    except LifecycleError:
-        return item
-    return expired
 
 
 def lapse_overdue(db, now):

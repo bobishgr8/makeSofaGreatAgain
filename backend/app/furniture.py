@@ -206,9 +206,6 @@ def run_action(item_id, action):
     db = get_db()
     reference = db.collection(COLLECTION).document(item_id)
     item, changed = lifecycle.apply_action(db, reference, action, g.user, payload)
-    if changed and action in ("rematch", "release_match", "cancel_delivery"):
-        # Back in the pool, but possibly too late to be matched again.
-        item = lifecycle.expire_if_stale(db, reference, item, today_sgt())
 
     private = _read_private(reference) if lifecycle.is_party(g.user, item) else None
     result = lifecycle.view(item, g.user, private, _match_contact(db, item, g.user))

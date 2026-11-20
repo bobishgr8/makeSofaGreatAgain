@@ -37,10 +37,11 @@ def list_matches():
 
 
 @matching_bp.get("/suggestions")
-@require_auth({"social_worker", "admin"}, require_approval=True)
+@require_auth({"social_worker", "admin"})
 def suggest_matches():
     """Rank the available furniture for one case. Nothing is stored: a match
-    only exists once the social worker requests an item (lifecycle accept_match)."""
+    only exists once the social worker requests an item (lifecycle accept_match),
+    which still needs an approved account that owns the case."""
     db = get_db()
     case_id = request.args.get("caseId")
     if not case_id:
@@ -49,8 +50,6 @@ def suggest_matches():
     if not case_document.exists:
         return jsonify({"error": "Case not found"}), 404
     case = {**case_document.to_dict(), "id": case_document.id}
-    if g.user["role"] != "admin" and case.get("socialWorkerId") != g.user["uid"]:
-        return jsonify({"error": "Case not found"}), 404
 
     today = today_sgt()
     suggestions = []

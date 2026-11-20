@@ -10,4 +10,6 @@ export type Suggestion = {
   // Points available per component for this item; lift access counts for more on bulky items.
   weights?: Record<string, number>;
   reasons: string[];
+  // True on the donor's delivery date: the last day for donation.
+  urgent?: boolean;
 };

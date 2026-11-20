@@ -64,6 +64,10 @@ export default function MatchCard({
           <h2>{item.title}</h2>
         </div>
 
+        {suggestion.urgent && (
+          <span className="pill pill-warning">Urgent</span>
+        )}
+
         <span className="status">
           {Math.round(suggestion.score)}% fit
         </span>

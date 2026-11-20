@@ -43,6 +43,7 @@ class MatchingTests(unittest.TestCase):
         result = score_match(item(), case(ROOMY), TODAY)
         full = {"access": 40, "proximity": 20, "dimensions": 25, "urgency": 15}
         self.assertEqual(result["score"], 100)
+        self.assertFalse(result["urgent"])
         self.assertEqual(result["scoreBreakdown"], full)
         self.assertEqual(result["weights"], full)
         self.assertEqual(
@@ -58,8 +59,24 @@ class MatchingTests(unittest.TestCase):
         )
 
     def test_wrong_category_or_unavailable_is_rejected(self):
-        self.assertIsNone(score_match(item(category="chair"), case(), TODAY))
+        self.assertIsNone(score_match(item(category="table"), case(needs=[{"category": "chair"}]), TODAY))
         self.assertIsNone(score_match(item(status="matched"), case(), TODAY))
+        # Matching ignores letter case.
+        self.assertIsNotNone(score_match(item(category="Sofa"), case(), TODAY))
+
+    def test_urgent_on_the_last_day_and_past_items_still_shown(self):
+        def result(delivery):
+            return score_match(item(expectedDeliveryDate=delivery), case(), TODAY)
+
+        last_day = result("2024-09-01")
+        self.assertTrue(last_day["urgent"])
+        self.assertIn("Last day for donation", last_day["reasons"])
+        self.assertFalse(result("2024-09-02")["urgent"])
+        self.assertIn("Needs a home within 1 day", result("2024-09-02")["reasons"])
+        past = result("2024-08-20")
+        self.assertFalse(past["urgent"])
+        self.assertIn("Past the donor's delivery date", past["reasons"])
+        self.assertFalse(result(None)["urgent"])
 
     def test_proximity_by_distance(self):
         def proximity(item_district, case_district):

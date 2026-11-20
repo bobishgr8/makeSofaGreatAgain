@@ -196,19 +196,23 @@ def score_match(item, case, today):
         reasons.append("Size not checked")
 
     days = _days_left(item, today)
+    # Urgent on the donor's delivery date itself. Items past it are still shown.
+    urgent = days == 0
     if days is not None:
         span = RELAXED_DAYS - URGENT_DAYS
         share = min(max((RELAXED_DAYS - days) / span, 0), 1)
         breakdown["urgency"] = round(weights["urgency"] * share)
-        if breakdown["urgency"]:
-            reasons.append(
-                "Needs a home today" if days <= 0
-                else f"Needs a home within {days} day{'' if days == 1 else 's'}"
-            )
+        if days < 0:
+            reasons.append("Past the donor's delivery date")
+        elif urgent:
+            reasons.append("Last day for donation")
+        elif breakdown["urgency"]:
+            reasons.append(f"Needs a home within {days} day{'' if days == 1 else 's'}")
 
     return {
         "score": sum(breakdown.values()),
         "scoreBreakdown": breakdown,
         "weights": weights,
         "reasons": reasons,
+        "urgent": urgent,
     }
