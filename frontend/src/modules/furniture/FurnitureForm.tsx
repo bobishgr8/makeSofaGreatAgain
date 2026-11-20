@@ -6,6 +6,7 @@ import Button from "../../common/components/Button";
 import FormField from "../../common/components/FormField";
 import { api } from "../../common/api";
 import { auth, storage } from "../../common/firebase";
+import { prepareForUpload } from "../../common/images";
 import { useFormConfig, type FormConfig } from "../../app/FormConfigContext";
 import { addDays, todaySgt } from "../../common/dates";
 import {
@@ -301,14 +302,13 @@ export default function FurnitureForm() {
     try {
       const uploadedPhotos = await Promise.all(
         photos.map(async (photo, index) => {
-          const extension = photo.file.name.split(".").pop() ?? "jpg";
+          // Re-encoded without metadata: see common/images.ts.
+          const cleaned = await prepareForUpload(photo.file);
           const storageRef = ref(
             storage,
-            `furniture/${user.uid}/${crypto.randomUUID()}.${extension}`,
+            `furniture/${user.uid}/${crypto.randomUUID()}.jpg`,
           );
-          await uploadBytes(storageRef, photo.file, {
-            contentType: photo.file.type,
-          });
+          await uploadBytes(storageRef, cleaned, { contentType: "image/jpeg" });
           return {
             url: await getDownloadURL(storageRef),
             isPrimary: index === 0,

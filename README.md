@@ -19,24 +19,49 @@ refurbish-platform/
 
 There are intentionally no repository classes, dependency-injection container or domain framework. Components call one shared API client; each Flask Blueprint performs its own straightforward Firestore operations. The scoring function is separate because it is pure business logic and independently testable.
 
-## Start Firebase emulators
+## Quickstart
 
-```bash
-firebase emulators:start
-```
+You need Python 3.11+, Node 20+ and access to the team's Firebase project. Java and the Firebase CLI are only needed for the emulator tests.
 
-## Start Flask
+**1. Get the secrets (once).** Ask a teammate for the Firebase web config and the service-account JSON, or download the JSON yourself from Firebase console → Project settings → Service accounts → Generate new private key. Save it as `firebaseServiceAccount.json` in the repo root. It is gitignored; never commit it.
+
+**2. Backend (terminal 1):**
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp env.example .env
-flask --app run.py run --debug
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+cp .env.example .env               # FIREBASE_SERVICE_ACCOUNT already points at ../firebaseServiceAccount.json
+python run.py                      # http://localhost:5000
 ```
 
-### Assigning admin roles (server-side)
+**3. Frontend (terminal 2):**
+
+```bash
+cd frontend
+cp .env.example .env               # fill in the VITE_FIREBASE_* values from the web config
+npm install
+npm run dev                        # http://localhost:3000
+```
+
+**4. Make yourself admin (once).** Sign up in the app, then run this from the repo root and sign out and back in:
+
+```bash
+python backend/scripts/set_role.py --service-account firebaseServiceAccount.json --email you@example.org --role admin
+```
+
+**5. Optional extras:**
+
+- **Background jobs** (expire old matches and waitlists, weekly summaries, send WhatsApp): `cd backend && python scripts/scheduler.py`, or press "Run jobs now" on the admin Dashboard tab.
+- **WhatsApp bot:** see `whatsapp-bot/README.md`. Without it, messages wait in `notificationsOutbox` and nothing is lost.
+- **Firestore emulator** (for the route tests): `firebase emulators:start`.
+
+`requirements.txt` is what a server installs; `requirements-dev.txt` adds the test tools.
+
+If something breaks, check `troubleshoot.md` first.
+
+## Assigning roles (server-side)
 
 A small helper script is included to set Firebase custom claims (role) for a user. Use this from a secure machine with your Firebase service account JSON.
 
@@ -51,14 +76,9 @@ After updating a user's role, they must refresh their ID token in the client (e.
 
 `AUTH_DISABLED=1` is only for local development. Production must verify Firebase ID tokens.
 
-## Start React
+## Photos
 
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
+Photos are redrawn in the browser before upload (`frontend/src/common/images.ts`): at most 1600 px on the long side, saved as JPEG. Redrawing drops the file's metadata, including the GPS position phones record, which would otherwise reveal the donor's home on the public listing. A photo the browser can't read is refused rather than uploaded as it is.
 
 ## Test
 
